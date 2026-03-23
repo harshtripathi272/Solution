@@ -11,43 +11,46 @@ class CrisisAlertCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sc = _sevCol(alert.severity);
+    final theme = Theme.of(context);
+    
     return Container(
-      width: 300,
-      padding: const EdgeInsets.all(16),
+      width: 320,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: sc.withValues(alpha: 0.3), width: 1),
-        boxShadow: [BoxShadow(color: sc.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, 4))],
+        color: AppColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: AppDecorations.ambientShadow,
+        border: Border.all(color: sc.withValues(alpha: 0.1), width: 1),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: sc.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-            child: Icon(Icons.warning_amber_rounded, color: sc, size: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: sc.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
+            child: Icon(Icons.warning_rounded, color: sc, size: 24),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 16),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(alert.severity.name.toUpperCase(),
-                style: TextStyle(color: sc, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
-            Text(alert.affectedArea, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                style: theme.textTheme.labelLarge?.copyWith(color: sc, letterSpacing: 1.2)),
+            const SizedBox(height: 4),
+            Text(alert.affectedArea, style: theme.textTheme.titleLarge),
           ])),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: 20),
         Text(alert.prediction, maxLines: 3, overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4)),
+            style: theme.textTheme.bodyLarge?.copyWith(height: 1.5)),
         const Spacer(),
         Row(children: [
-          Icon(Icons.schedule, size: 12, color: AppColors.textMuted),
-          const SizedBox(width: 4),
+          Icon(Icons.schedule, size: 16, color: AppColors.outlineVariant),
+          const SizedBox(width: 8),
           Text('Predicted: ${DateFormat('MMM dd').format(alert.predictedDate)}',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+              style: theme.textTheme.bodyMedium),
           const Spacer(),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(color: sc.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
-            child: Text('AI Forecast', style: TextStyle(color: sc, fontSize: 10, fontWeight: FontWeight.w600)),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: AppColors.surfaceContainerLow, borderRadius: BorderRadius.circular(8)),
+            child: Text('AI Forecast', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.onSurfaceVariant)),
           ),
         ]),
       ]),

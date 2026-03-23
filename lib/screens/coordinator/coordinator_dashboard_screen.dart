@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:animate_do/animate_do.dart';
-import '../../config/theme.dart';
 import '../../providers/app_state.dart';
+import '../../config/theme.dart';
 import '../../models/task_model.dart';
 import '../../widgets/stat_card.dart';
 import '../../widgets/task_card.dart';
@@ -13,217 +12,113 @@ class CoordinatorDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Consumer<AppState>(
       builder: (context, state, _) {
-        return CustomScrollView(
-          slivers: [
-            // Welcome header
-            SliverToBoxAdapter(
-              child: FadeInDown(
-                duration: const Duration(milliseconds: 600),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Welcome back, ',
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  color: AppColors.textSecondary,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                          ),
-                          Text(
-                            state.currentUser.name.split(' ').first,
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primary,
-                                ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Here\'s what needs your attention today',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppColors.textMuted,
-                            ),
-                      ),
-                    ],
-                  ),
+        if (state.isLoading) return const Center(child: CircularProgressIndicator());
+
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 32, 24, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Here is the latest snapshot of your community.',
+                        style: theme.textTheme.bodyLarge),
+                    const SizedBox(height: 8),
+                    Text('Overview', style: theme.textTheme.displayMedium),
+                  ],
                 ),
               ),
-            ),
-
-            // Stats Grid
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: FadeInUp(
-                  duration: const Duration(milliseconds: 600),
-                  delay: const Duration(milliseconds: 200),
-                  child: Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      StatCard(
-                        title: 'Open Tasks',
-                        value: '${state.openTasks.length}',
-                        icon: Icons.assignment_outlined,
-                        color: AppColors.warning,
-                        subtitle: '${state.criticalTaskCount} critical',
-                      ),
-                      StatCard(
-                        title: 'Active Volunteers',
-                        value: '${state.availableVolunteers.length}',
-                        icon: Icons.people_outline,
-                        color: AppColors.primary,
-                        subtitle: 'of ${state.volunteers.length} total',
-                      ),
-                      StatCard(
-                        title: 'People Affected',
-                        value: _formatNumber(state.totalPeopleAffected),
-                        icon: Icons.groups_outlined,
-                        color: AppColors.error,
-                        subtitle: 'across ${state.reports.length} reports',
-                      ),
-                      StatCard(
-                        title: 'Crisis Alerts',
-                        value: '${state.activeAlerts.length}',
-                        icon: Icons.warning_amber_rounded,
-                        color: AppColors.urgencyCritical,
-                        subtitle: 'AI-predicted',
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // Crisis Alerts
-            if (state.activeAlerts.isNotEmpty) ...[
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: FadeInLeft(
-                    duration: const Duration(milliseconds: 600),
-                    delay: const Duration(milliseconds: 400),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.error.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.crisis_alert,
-                                  size: 14, color: AppColors.error),
-                              const SizedBox(width: 4),
-                              Text(
-                                'AI CRISIS PREDICTIONS',
-                                style: TextStyle(
-                                  color: AppColors.error,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.2,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+              
+              const SizedBox(height: 24),
+              
+              // Stats
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    StatCard(
+                      title: 'Open Needs',
+                      value: '${state.tasks.where((t) => t.status == TaskStatus.open).length}',
+                      icon: Icons.assignment_late,
+                      color: AppColors.warning,
+                      subtitle: '+2 since yesterday',
                     ),
-                  ),
+                    StatCard(
+                      title: 'Active Volunteers',
+                      value: '${state.volunteers.where((v) => v.isAvailable).length}',
+                      icon: Icons.people,
+                      color: AppColors.primary,
+                      subtitle: '98% capacity',
+                    ),
+                  ],
                 ),
               ),
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 180,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: state.activeAlerts.length,
-                    itemBuilder: (context, index) {
-                      return FadeInRight(
-                        duration: const Duration(milliseconds: 500),
-                        delay: Duration(milliseconds: 100 * index),
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: CrisisAlertCard(
-                              alert: state.activeAlerts[index]),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ],
-
-            // Recent Tasks
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-                child: FadeInLeft(
-                  duration: const Duration(milliseconds: 600),
-                  delay: const Duration(milliseconds: 600),
+              
+              const SizedBox(height: 48),
+              
+              // Crisis Alerts
+              if (state.crisisAlerts.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Active Tasks',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                      ),
-                      TextButton(
-                        onPressed: () => state.setNavIndex(1),
-                        child: Text(
-                          'View All →',
-                          style: TextStyle(color: AppColors.primary),
-                        ),
+                      Text('Predictive Alerts', style: theme.textTheme.headlineLarge),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: AppColors.error.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
+                        child: Text('${state.crisisAlerts.length} Active', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.error)),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ),
-
-            // Task list
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final task = state.tasks[index];
-                    return FadeInUp(
-                      duration: const Duration(milliseconds: 500),
-                      delay: Duration(milliseconds: 100 * index),
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: TaskCard(task: task),
-                      ),
-                    );
-                  },
-                  childCount: state.tasks.length.clamp(0, 5),
+                const SizedBox(height: 24),
+                SizedBox(
+                  height: 240,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: state.crisisAlerts.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 16),
+                    itemBuilder: (context, index) => CrisisAlertCard(alert: state.crisisAlerts[index]),
+                  ),
                 ),
+                const SizedBox(height: 48),
+              ],
+              
+              // Recent Tasks
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text('Recent Needs', style: theme.textTheme.headlineLarge),
               ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 100)),
-          ],
+              const SizedBox(height: 24),
+              
+              ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: state.tasks.take(5).length,
+                itemBuilder: (context, index) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: TaskCard(task: state.tasks[index]),
+                  );
+                },
+              ),
+              
+              const SizedBox(height: 48),
+            ],
+          ),
         );
       },
     );
-  }
-
-  String _formatNumber(int n) {
-    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
-    return n.toString();
   }
 }

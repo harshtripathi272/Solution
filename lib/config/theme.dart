@@ -2,178 +2,125 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
-  // Primary palette - Deep teal/emerald
-  static const primary = Color(0xFF0D9488);
-  static const primaryDark = Color(0xFF0F766E);
-  static const primaryLight = Color(0xFF5EEAD4);
-  static const primarySurface = Color(0xFF042F2E);
+  // Terra Ethos Palette - Premium, Human-centric, Earthy
+  static const Color surface = Color(0xFFFAF9F5);
+  static const Color surfaceDim = Color(0xFFDBDAD6);
+  static const Color surfaceContainerLow = Color(0xFFF4F4F0);
+  static const Color surfaceContainer = Color(0xFFEEEEEA);
+  static const Color surfaceContainerHigh = Color(0xFFE9E8E4);
+  static const Color surfaceContainerLowest = Color(0xFFFFFFFF);
+  
+  static const Color primary = Color(0xFF334F2B);
+  static const Color primaryContainer = Color(0xFF4A6741);
+  static const Color onPrimary = Color(0xFFFFFFFF);
+  static const Color onPrimaryContainer = Color(0xFFC2E4B4);
+  
+  static const Color tertiary = Color(0xFF5F412B);
+  static const Color onTertiary = Color(0xFFFFFFFF);
+  static const Color tertiaryContainer = Color(0xFF795841);
+  
+  static const Color onSurface = Color(0xFF1B1C1A);
+  static const Color onSurfaceVariant = Color(0xFF434840);
+  static const Color outlineVariant = Color(0xFFC3C8BD);
 
-  // Accent - Warm amber
-  static const accent = Color(0xFFF59E0B);
-  static const accentLight = Color(0xFFFBBF24);
+  // Status Colors (Earthy variants)
+  static const Color success = Color(0xFF4A6549); // Secondary
+  static const Color warning = Color(0xFF967259); // Tertiary override
+  static const Color error = Color(0xFFBA1A1A);
+  static const Color info = Color(0xFF8BA888); // Secondary override
 
-  // Background - Rich dark
-  static const bgPrimary = Color(0xFF0A0F1A);
-  static const bgSecondary = Color(0xFF111827);
-  static const bgCard = Color(0xFF1A2332);
-  static const bgCardHover = Color(0xFF1F2D3D);
-  static const bgSurface = Color(0xFF0F1B2B);
-
-  // Text
-  static const textPrimary = Color(0xFFF1F5F9);
-  static const textSecondary = Color(0xFF94A3B8);
-  static const textMuted = Color(0xFF64748B);
-
-  // Status
-  static const success = Color(0xFF22C55E);
-  static const warning = Color(0xFFF59E0B);
-  static const error = Color(0xFFEF4444);
-  static const info = Color(0xFF3B82F6);
-
-  // Urgency heatmap
-  static const urgencyCritical = Color(0xFFEF4444);
-  static const urgencyHigh = Color(0xFFF97316);
-  static const urgencyMedium = Color(0xFFFBBF24);
-  static const urgencyLow = Color(0xFF22C55E);
-
-  // SDG Colors
-  static const sdg1 = Color(0xFFE5243B);
-  static const sdg2 = Color(0xFFDDA63A);
-  static const sdg3 = Color(0xFF4C9F38);
-  static const sdg4 = Color(0xFFC5192D);
-  static const sdg5 = Color(0xFFFF3A21);
-  static const sdg6 = Color(0xFF26BDE2);
-
-  // Glass effect
-  static const glassBg = Color(0x1AFFFFFF);
-  static const glassBorder = Color(0x33FFFFFF);
+  // Urgency mapping
+  static const Color urgencyCritical = error;
+  static const Color urgencyHigh = tertiary;
+  static const Color urgencyMedium = warning;
+  static const Color urgencyLow = success;
 }
 
 class AppTheme {
-  static ThemeData get darkTheme {
+  static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: AppColors.bgPrimary,
-      colorScheme: const ColorScheme.dark(
+      scaffoldBackgroundColor: AppColors.surface,
+      colorScheme: ColorScheme.light(
         primary: AppColors.primary,
-        secondary: AppColors.accent,
-        surface: AppColors.bgSecondary,
+        onPrimary: AppColors.onPrimary,
+        primaryContainer: AppColors.primaryContainer,
+        secondary: AppColors.success,
+        tertiary: AppColors.tertiary,
+        surface: AppColors.surface,
+        onSurface: AppColors.onSurface,
         error: AppColors.error,
-        onPrimary: Colors.white,
-        onSecondary: Colors.black,
-        onSurface: AppColors.textPrimary,
       ),
-      textTheme: GoogleFonts.interTextTheme(
-        ThemeData.dark().textTheme,
-      ).apply(
-        bodyColor: AppColors.textPrimary,
-        displayColor: AppColors.textPrimary,
+      textTheme: TextTheme(
+        displayLarge: GoogleFonts.manrope(fontSize: 48, fontWeight: FontWeight.w700, letterSpacing: -0.96, color: AppColors.onSurface),
+        displayMedium: GoogleFonts.manrope(fontSize: 40, fontWeight: FontWeight.w700, letterSpacing: -0.8, color: AppColors.onSurface),
+        headlineLarge: GoogleFonts.manrope(fontSize: 32, fontWeight: FontWeight.w700, letterSpacing: -0.64, color: AppColors.onSurface),
+        headlineSmall: GoogleFonts.manrope(fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.48, color: AppColors.onSurface),
+        titleLarge: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w600, color: AppColors.onSurface),
+        bodyLarge: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w400, color: AppColors.onSurfaceVariant),
+        bodyMedium: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.onSurfaceVariant),
+        labelLarge: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primary),
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.bgPrimary.withValues(alpha: 0.8),
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: GoogleFonts.inter(
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-          color: AppColors.textPrimary,
-        ),
-      ),
-      cardTheme: CardThemeData(
-        color: AppColors.bgCard,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.glassBorder, width: 0.5),
-        ),
+        iconTheme: const IconThemeData(color: AppColors.onSurface),
+        titleTextStyle: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.onSurface),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
+          foregroundColor: AppColors.onPrimary,
           elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          textStyle: GoogleFonts.inter(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(48)), // xl radius
+          textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
         ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
-          side: const BorderSide(color: AppColors.primary),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: AppColors.bgCard,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.glassBorder),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.glassBorder),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        hintStyle: const TextStyle(color: AppColors.textMuted),
-      ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: AppColors.bgSecondary,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: AppColors.textMuted,
-        type: BottomNavigationBarType.fixed,
-        elevation: 0,
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: AppColors.bgCard,
-        labelStyle: const TextStyle(color: AppColors.textPrimary, fontSize: 12),
-        side: const BorderSide(color: AppColors.glassBorder),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        backgroundColor: AppColors.surfaceContainerHigh,
+        selectedColor: AppColors.tertiary,
+        labelStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.onSurface),
+        secondaryLabelStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.onTertiary),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: StadiumBorder(side: BorderSide(color: Colors.transparent)),
       ),
     );
   }
 }
 
-// Reusable gradient decorations
 class AppDecorations {
-  static BoxDecoration get glassCard => BoxDecoration(
-        color: AppColors.glassBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.glassBorder, width: 0.5),
-      );
+  // Ambient Diffusion - No harsh digital drop shadows
+  static List<BoxShadow> get ambientShadow => [
+    BoxShadow(
+      color: AppColors.onSurface.withValues(alpha: 0.12),
+      blurRadius: 40,
+      spreadRadius: -10,
+      offset: const Offset(0, 10),
+    )
+  ];
 
-  static BoxDecoration get primaryGradientCard => BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.primaryDark, AppColors.primary],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-      );
+  // For base cards (surface container lowest on surface)
+  static BoxDecoration get baseCard => BoxDecoration(
+    color: AppColors.surfaceContainerLowest,
+    borderRadius: BorderRadius.circular(32), // lg radius
+    boxShadow: ambientShadow,
+  );
+  
+  // For content blocks (surface container low on surface)
+  static BoxDecoration get contentBlock => BoxDecoration(
+    color: AppColors.surfaceContainerLow,
+    borderRadius: BorderRadius.circular(24),
+  );
 
-  static LinearGradient get primaryGradient => const LinearGradient(
-        colors: [AppColors.primary, AppColors.primaryLight],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-
-  static LinearGradient get accentGradient => const LinearGradient(
-        colors: [AppColors.accent, AppColors.accentLight],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
+  static BoxDecoration get activeChip => BoxDecoration(
+    color: AppColors.tertiary,
+    borderRadius: BorderRadius.circular(9999),
+  );
+  
+  static BoxDecoration get inactiveChip => BoxDecoration(
+    color: AppColors.surfaceContainerHigh,
+    borderRadius: BorderRadius.circular(9999),
+  );
 }
