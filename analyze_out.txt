@@ -1,10 +1,12 @@
 Analyzing Solution...                                           
 
+  error - Undefined name 'context' - lib\app.dart:161:43 - undefined_identifier
    info - The private field _isLoading could be 'final' - lib\providers\app_state.dart:22:8 - prefer_final_fields
-warning - Unused import: '../../models/task_model.dart' - lib\screens\coordinator\coordinator_dashboard_screen.dart:6:8 - unused_import
-   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - lib\screens\ngo_worker\report_submission_screen.dart:232:9 - deprecated_member_use
-   info - Statements in an if should be enclosed in a block - lib\screens\ngo_worker\report_submission_screen.dart:252:20 - curly_braces_in_flow_control_structures
+  error - Undefined name 'TaskStatus' - lib\screens\coordinator\coordinator_dashboard_screen.dart:48:70 - undefined_identifier
+   info - Unnecessary use of multiple underscores - lib\screens\coordinator\coordinator_dashboard_screen.dart:89:43 - unnecessary_underscores
+warning - Unused import: '../../config/constants.dart' - lib\screens\coordinator\heatmap_screen.dart:3:8 - unused_import
+  error - The getter 'onPrimaryContainer' isn't defined for the type 'AppColors' - lib\screens\coordinator\sdg_dashboard_screen.dart:34:111 - undefined_getter
 warning - Unused import: 'package:flutter/material.dart' - lib\services\mock_data_service.dart:2:8 - unused_import
 warning - The value of the field '_random' isn't used - lib\services\mock_data_service.dart:11:16 - unused_field
 
-6 issues found. (ran in 1.8s)
+8 issues found. (ran in 1.6s)
