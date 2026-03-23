@@ -1,0 +1,10 @@
+Analyzing Solution...                                           
+
+   info - The private field _isLoading could be 'final' - lib\providers\app_state.dart:22:8 - prefer_final_fields
+warning - Unused import: '../../models/task_model.dart' - lib\screens\coordinator\coordinator_dashboard_screen.dart:6:8 - unused_import
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - lib\screens\ngo_worker\report_submission_screen.dart:232:9 - deprecated_member_use
+   info - Statements in an if should be enclosed in a block - lib\screens\ngo_worker\report_submission_screen.dart:252:20 - curly_braces_in_flow_control_structures
+warning - Unused import: 'package:flutter/material.dart' - lib\services\mock_data_service.dart:2:8 - unused_import
+warning - The value of the field '_random' isn't used - lib\services\mock_data_service.dart:11:16 - unused_field
+
+6 issues found. (ran in 1.8s)
