@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'config/theme.dart';
 import 'models/user_model.dart';
 import 'providers/app_state.dart';
+import 'services/auth_service.dart';
 import 'screens/auth_wrapper.dart';
 import 'screens/coordinator/coordinator_dashboard_screen.dart';
 import 'screens/coordinator/heatmap_screen.dart';
@@ -56,39 +57,25 @@ class AppShell extends StatelessWidget {
         Text('SevaSetu', style: Theme.of(context).textTheme.headlineSmall),
       ]),
       actions: [
-        PopupMenuButton<UserRole>(
-          icon: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(9999),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(_roleIcon(state.currentRole), size: 16, color: AppColors.primary),
-              const SizedBox(width: 8),
-              Text(_roleName(state.currentRole),
-                  style: Theme.of(context).textTheme.labelLarge),
-              const SizedBox(width: 4),
-              const Icon(Icons.keyboard_arrow_down, size: 16, color: AppColors.onSurfaceVariant),
-            ]),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(9999),
           ),
-          itemBuilder: (context) => UserRole.values.map((role) => PopupMenuItem(
-                value: role,
-                child: Row(children: [
-                  Icon(_roleIcon(role), size: 18, color: state.currentRole == role ? AppColors.primary : AppColors.onSurfaceVariant),
-                  const SizedBox(width: 12),
-                  Text(_roleName(role), style: TextStyle(
-                    color: state.currentRole == role ? AppColors.primary : AppColors.onSurface,
-                    fontWeight: state.currentRole == role ? FontWeight.w600 : FontWeight.w400,
-                  )),
-                ]),
-              )).toList(),
-          onSelected: (role) => state.switchRole(role),
-          color: AppColors.surfaceContainerLowest,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          elevation: 12,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(_roleIcon(state.currentRole), size: 16, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Text(_roleName(state.currentRole),
+                style: Theme.of(context).textTheme.labelLarge),
+          ]),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 4),
+        IconButton(
+          icon: const Icon(Icons.logout, color: AppColors.error),
+          onPressed: () => AuthService().signOut(),
+        ),
+        const SizedBox(width: 12),
       ],
     );
   }
