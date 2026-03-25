@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:animate_do/animate_do.dart';
 import 'config/theme.dart';
 import 'models/user_model.dart';
 import 'providers/app_state.dart';
+import 'screens/auth_wrapper.dart';
 import 'screens/coordinator/coordinator_dashboard_screen.dart';
 import 'screens/coordinator/heatmap_screen.dart';
 import 'screens/coordinator/sdg_dashboard_screen.dart';
@@ -19,7 +19,7 @@ class SevasetuApp extends StatelessWidget {
       title: 'SevaSetu',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const AppShell(),
+      home: const AuthWrapper(),
     );
   }
 }

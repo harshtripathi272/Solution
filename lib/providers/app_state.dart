@@ -19,7 +19,7 @@ class AppState extends ChangeNotifier {
 
   // UI state
   int _currentNavIndex = 0;
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
   AppState() {
     _loadData();

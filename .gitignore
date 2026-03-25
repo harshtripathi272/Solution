@@ -43,3 +43,22 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/venv
+
+# Backend secrets & environments
+backend/.env
+backend/.env.*
+backend/*.json
+!backend/package.json
+backend/__pycache__/
+backend/.pytest_cache/
+
+# Firebase / FlutterFire secrets
+ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
+lib/firebase_options.dart
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+backend/firebase_service_account.json
