@@ -6,6 +6,10 @@ import logging
 
 from auth import get_current_user, get_current_user_token, RoleChecker, db, firestore
 from models import UserProfile, UserRole
+from pydantic import BaseModel
+
+class RegisterRequest(BaseModel):
+    requested_role: str = "volunteer"
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
@@ -31,10 +35,10 @@ def health_check():
     return {"status": "ok", "message": "SevaSetu backend is running"}
 
 @app.post("/api/v1/auth/register", response_model=UserProfile)
-def register_user(decoded_token: dict = Depends(get_current_user_token)):
+def register_user(req: RegisterRequest, decoded_token: dict = Depends(get_current_user_token)):
     """
     Called by the client immediately after Firebase Auth sign-up.
-    Creates a new user profile in the Firestore 'users' collection with 'volunteer' role if it doesn't exist.
+    Creates a new user profile in the Firestore 'users' collection with the requested role if it doesn't exist.
     """
     uid = decoded_token.get("uid")
     email = decoded_token.get("email")
@@ -46,14 +50,22 @@ def register_user(decoded_token: dict = Depends(get_current_user_token)):
         logger.info(f"User {uid} already exists.")
         return UserProfile(**user_doc.to_dict(), uid=uid)
         
-    logger.info(f"Registering new user profile for UID: {uid}")
+    logger.info(f"Registering new user profile for UID: {uid} with requested role: {req.requested_role}")
     
-    # All users default to volunteer and must be upgraded manually by an admin
+    requested_role_str = req.requested_role.split('.')[-1]
+    role_map = {
+        "coordinator": UserRole.coordinator.value,
+        "ngoWorker": UserRole.ngo_worker.value,
+        "ngo_worker": UserRole.ngo_worker.value,
+        "volunteer": UserRole.volunteer.value,
+    }
+    assigned_role = role_map.get(requested_role_str, UserRole.volunteer.value)
+    
     new_user_data = {
         "email": email,
-        "role": UserRole.volunteer.value,
+        "role": assigned_role,
         "organization_id": None,
-        "is_verified": False,
+        "is_verified": True if assigned_role == UserRole.volunteer.value else False,
         "created_at": firestore.SERVER_TIMESTAMP,
         "updated_at": firestore.SERVER_TIMESTAMP
     }

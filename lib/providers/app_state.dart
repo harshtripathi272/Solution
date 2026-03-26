@@ -25,9 +25,14 @@ class AppState extends ChangeNotifier {
 
   // UI state
   int _currentNavIndex = 0;
+  UserRole? _requestedRole;
 
   AppState() {
     _loadMockData(); 
+  }
+
+  void setRequestedRole(UserRole role) {
+    _requestedRole = role;
   }
 
   // Getters
@@ -87,8 +92,16 @@ class AppState extends ChangeNotifier {
 
     try {
       final apiClient = ApiClient(baseUrl: "http://127.0.0.1:8000"); 
+      
+      // Pass the requested role if the user just signed up
+      final payload = <String, dynamic>{};
+      if (_requestedRole != null) {
+        payload['requested_role'] = _requestedRole!.name;
+        _requestedRole = null; // Consume the requested role
+      }
+
       // Calls FastApi to verify token and return profile
-      final response = await apiClient.post("/api/v1/auth/register", {});
+      final response = await apiClient.post("/api/v1/auth/register", payload);
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../providers/app_state.dart';
+import '../models/user_model.dart';
 import '../config/theme.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -15,6 +18,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   String? _errorMessage;
+  UserRole _selectedRole = UserRole.volunteer;
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -38,6 +42,7 @@ class _AuthScreenState extends State<AuthScreen> {
       if (_isLogin) {
         await _authService.signInWithEmailPassword(email, password);
       } else {
+        if (mounted) context.read<AppState>().setRequestedRole(_selectedRole);
         await _authService.signUpWithEmailPassword(email, password);
         // Note: Backend handles creating the actual profile document upon first sign-in
       }
@@ -156,7 +161,30 @@ class _AuthScreenState extends State<AuthScreen> {
                 icon: Icons.lock_outline,
                 isPassword: true,
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
+              
+              if (!_isLogin) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  decoration: AppDecorations.contentBlock,
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<UserRole>(
+                      value: _selectedRole,
+                      isExpanded: true,
+                      icon: const Icon(Icons.arrow_drop_down, color: AppColors.primary),
+                      items: const [
+                        DropdownMenuItem(value: UserRole.volunteer, child: Text("Sign up as Volunteer")),
+                        DropdownMenuItem(value: UserRole.ngoWorker, child: Text("Sign up as NGO Worker")),
+                        DropdownMenuItem(value: UserRole.coordinator, child: Text("Sign up as Coordinator")),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setState(() => _selectedRole = val);
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+              ],
 
               // Action Button
               ElevatedButton(

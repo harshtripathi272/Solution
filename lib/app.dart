@@ -43,39 +43,53 @@ class AppShell extends StatelessWidget {
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context, AppState state) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 380; // S8+ width is roughly 360 logical pixels
+    
     return AppBar(
-      title: Row(children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppColors.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
+      title: Row(
+        mainAxisSize: MainAxisSize.min, // Prevents row from infinitely expanding
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.spa, color: AppColors.onPrimary, size: 20),
           ),
-          child: const Icon(Icons.spa, color: AppColors.onPrimary, size: 20),
-        ),
-        const SizedBox(width: 12),
-        Text('SevaSetu', style: Theme.of(context).textTheme.headlineSmall),
-      ]),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text('SevaSetu', 
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
       actions: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16, vertical: 8),
           decoration: BoxDecoration(
             color: AppColors.surfaceContainerLow,
             borderRadius: BorderRadius.circular(9999),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(_roleIcon(state.currentRole), size: 16, color: AppColors.primary),
-            const SizedBox(width: 8),
-            Text(_roleName(state.currentRole),
-                style: Theme.of(context).textTheme.labelLarge),
+            if (!isSmallScreen) ...[
+              const SizedBox(width: 8),
+              Text(_roleName(state.currentRole),
+                  style: Theme.of(context).textTheme.labelMedium),
+            ],
           ]),
         ),
         const SizedBox(width: 4),
         IconButton(
           icon: const Icon(Icons.logout, color: AppColors.error),
           onPressed: () => AuthService().signOut(),
+          tooltip: 'Sign Out',
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: isSmallScreen ? 4 : 12),
       ],
     );
   }
@@ -118,6 +132,8 @@ class AppShell extends StatelessWidget {
 
   Widget _buildBottomNav(BuildContext context, AppState state) {
     final items = _getNavItems(state.currentRole);
+    final isSmallScreen = MediaQuery.of(context).size.width < 380;
+    
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surfaceContainerLowest,
@@ -125,16 +141,19 @@ class AppShell extends StatelessWidget {
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: items.asMap().entries.map((entry) {
               final isSelected = state.currentNavIndex == entry.key;
               return GestureDetector(
                 onTap: () => state.setNavIndex(entry.key),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 250),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isSmallScreen ? 14 : 24, 
+                    vertical: 10
+                  ),
                   decoration: BoxDecoration(
                     color: isSelected ? AppColors.surfaceContainerLow : Colors.transparent,
                     borderRadius: BorderRadius.circular(9999),
@@ -143,9 +162,12 @@ class AppShell extends StatelessWidget {
                     Icon(entry.value['icon'] as IconData, size: 24,
                         color: isSelected ? AppColors.primary : AppColors.outlineVariant),
                     if (isSelected) ...[
-                      const SizedBox(width: 12),
-                      Text(entry.value['label'] as String,
-                          style: Theme.of(context).textTheme.labelLarge),
+                      SizedBox(width: isSmallScreen ? 6 : 12),
+                      Flexible(
+                        child: Text(entry.value['label'] as String,
+                            style: Theme.of(context).textTheme.labelLarge,
+                            overflow: TextOverflow.ellipsis),
+                      ),
                     ],
                   ]),
                 ),
