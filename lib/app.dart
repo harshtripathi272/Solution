@@ -68,6 +68,22 @@ class AppShell extends StatelessWidget {
         ],
       ),
       actions: [
+        if (state.currentRole == UserRole.volunteer)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.location_on, 
+                size: 16, 
+                color: state.locationService?.isTracking == true ? AppColors.error : AppColors.outline
+              ),
+              Switch(
+                value: state.locationService?.isTracking ?? false,
+                activeColor: AppColors.error,
+                onChanged: (_) => state.toggleLocationTracking(),
+              ),
+            ],
+          ),
         Container(
           padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16, vertical: 8),
           decoration: BoxDecoration(

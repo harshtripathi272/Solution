@@ -3,22 +3,54 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict
 from datetime import datetime, timezone
 import logging
+from contextlib import asynccontextmanager
+import asyncio
 
 from auth import get_current_user, get_current_user_token, RoleChecker, db, firestore
 from models import UserProfile, UserRole
 from pydantic import BaseModel
 
+# Pipeline Imports
+from pipeline.validation_service import validation_service
+from pipeline.allocation_engine import allocation_engine
+from pipeline.ingestors.gdacs import gdacs_ingestor
+from pipeline.location_store import location_store
+
 class RegisterRequest(BaseModel):
     requested_role: str = "volunteer"
+
+class LocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
+    skills: list[str] = []
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+async def gdacs_polling_loop():
+    while True:
+        try:
+            await gdacs_ingestor.fetch_and_publish()
+        except Exception as e:
+            logger.error(f"GDACS Polling Error: {e}")
+        await asyncio.sleep(600)  # Fetch every 10 minutes
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("---| Booting SevaSetu Crisis Intelligence Pipeline |---")
+    validation_service.start()
+    allocation_engine.start()
+    # Start background polling tasks
+    asyncio.create_task(gdacs_polling_loop())
+    yield
+    logger.info("---| Shutting down Crisis Pipeline |---")
+
 app = FastAPI(
     title="SevaSetu Backend APIs",
-    description="Backend API with Firebase Authentication and RBAC",
-    version="1.0.0"
+    description="Backend API with Firebase Authentication and Crisis Pipeline",
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS Middleware config
@@ -88,8 +120,24 @@ def get_profile(current_user: UserProfile = Depends(get_current_user)):
     """Fetch current user's profile verified via Firebase ID Token"""
     return current_user
 
-# --- RBAC Protected Endpoints ---
+@app.post("/api/v1/location/update")
+def update_location(loc: LocationUpdate, decoded_token: dict = Depends(get_current_user_token)):
+    """
+    Ephemerally stores the volunteer's streamed location tracking ping.
+    Does NOT write to the permanent database, guaranteeing privacy and data minimization.
+    """
+    uid = decoded_token.get("uid")
+    
+    location_store.update_location(
+        user_id=uid,
+        lat=loc.latitude,
+        lon=loc.longitude,
+        timestamp=loc.timestamp,
+        skills=loc.skills
+    )
+    return {"status": "success", "message": "Location safely streamed and cached"}
 
+# --- RBAC Protected Endpoints ---
 @app.get("/api/v1/alerts")
 def get_global_alerts(current_user: UserProfile = Depends(RoleChecker([UserRole.coordinator]))):
     """Only Coordinators can access global alerts"""

@@ -7,9 +7,12 @@ import '../models/user_model.dart';
 import '../models/crisis_alert_model.dart';
 import '../services/mock_data_service.dart';
 import '../services/api_client.dart';
+import '../services/location_service.dart';
 
 class AppState extends ChangeNotifier {
   // Current user
+  ApiClient? _apiClient;
+  LocationService? _locationService;
   UserRole _currentRole = UserRole.volunteer; 
   AppUser? _currentUser;
   bool _isLoadingUser = false;
@@ -28,6 +31,7 @@ class AppState extends ChangeNotifier {
   UserRole? _requestedRole;
 
   AppState() {
+    _locationService = LocationService(this);
     _loadMockData(); 
   }
 
@@ -41,6 +45,9 @@ class AppState extends ChangeNotifier {
   bool get isLoadingUser => _isLoadingUser;
   bool get isLoading => _isLoading;
   String? get backendError => _backendError;
+  ApiClient? get apiClient => _apiClient;
+  LocationService? get locationService => _locationService;
+  bool get isAuthenticated => _currentUser != null;
 
   List<FieldReport> get reports => _reports;
   List<VolunteerTask> get tasks => _tasks;
@@ -91,7 +98,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final apiClient = ApiClient(baseUrl: "http://127.0.0.1:8000"); 
+      _apiClient = ApiClient(baseUrl: "http://127.0.0.1:8000"); 
       
       // Pass the requested role if the user just signed up
       final payload = <String, dynamic>{};
@@ -101,7 +108,7 @@ class AppState extends ChangeNotifier {
       }
 
       // Calls FastApi to verify token and return profile
-      final response = await apiClient.post("/api/v1/auth/register", payload);
+      final response = await _apiClient!.post("/api/v1/auth/register", payload);
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -133,6 +140,13 @@ class AppState extends ChangeNotifier {
   void setNavIndex(int index) {
     _currentNavIndex = index;
     notifyListeners();
+  }
+
+  Future<void> toggleLocationTracking() async {
+    if (_locationService != null) {
+      await _locationService!.toggleTracking();
+      notifyListeners();
+    }
   }
 
   void addFieldReport(FieldReport report) {
