@@ -87,7 +87,7 @@ class CoordinatorDashboard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     scrollDirection: Axis.horizontal,
                     itemCount: state.crisisAlerts.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 16),
+                    separatorBuilder: (_, _) => const SizedBox(width: 16),
                     itemBuilder: (context, index) => CrisisAlertCard(alert: state.crisisAlerts[index]),
                   ),
                 ),
