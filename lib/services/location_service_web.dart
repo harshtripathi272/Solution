@@ -1,7 +1,8 @@
-// Web implementation using dart:html standard Geolocation API
+// Web implementation using package:web Geolocation API
 // This avoids the geolocator package on Chrome which crashes DDC.
 import 'dart:async';
-import 'dart:html' as html;
+import 'dart:js_interop';
+import 'package:web/web.dart';
 
 Future<bool> checkAndRequestPermission() async {
   // On web, permission is requested implicitly via getCurrentPosition / watchPosition
@@ -11,17 +12,24 @@ Future<bool> checkAndRequestPermission() async {
 Stream<Map<String, double>> getPositionStream() {
   final controller = StreamController<Map<String, double>>();
 
-  html.window.navigator.geolocation.watchPosition(
-    enableHighAccuracy: true,
-    timeout: const Duration(seconds: 30),
-  ).listen(
-    (html.Geoposition pos) {
-      controller.add({
-        'lat': pos.coords!.latitude!.toDouble(),
-        'lon': pos.coords!.longitude!.toDouble(),
-      });
-    },
-    onError: (e) => controller.addError(e),
+  void onSuccess(GeolocationPosition pos) {
+    controller.add({
+      'lat': pos.coords.latitude,
+      'lon': pos.coords.longitude,
+    });
+  }
+
+  void onError(GeolocationPositionError error) {
+    controller.addError(error.message);
+  }
+
+  window.navigator.geolocation.watchPosition(
+    onSuccess.toJS,
+    onError.toJS,
+    PositionOptions(
+      enableHighAccuracy: true,
+      timeout: 30000,
+    ),
   );
 
   return controller.stream;

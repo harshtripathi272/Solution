@@ -10,9 +10,14 @@ class UserRole(str, Enum):
 
 class UserProfile(BaseModel):
     uid: str
+    name: Optional[str] = None
     email: Optional[EmailStr] = None
     role: UserRole
     organization_id: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    skills: list[str] = []
+    is_available: bool = True
     is_verified: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

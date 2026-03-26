@@ -10,7 +10,7 @@ from models import UserProfile, UserRole
 cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase_service_account.json")
 if os.path.exists(cred_path):
     cred = credentials.Certificate(cred_path)
-    if not firebase_admin._apps:
+    if not firebase_admin._apps: 
         firebase_admin.initialize_app(cred)
 else:
     # Use default credentials to allow startup without breaking if json is missing

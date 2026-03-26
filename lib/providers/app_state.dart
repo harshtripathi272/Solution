@@ -35,6 +35,20 @@ class AppState extends ChangeNotifier {
     _loadMockData(); 
   }
 
+  DateTime _parseBackendDate(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      return DateTime.tryParse(value) ?? DateTime.now();
+    }
+    return DateTime.now();
+  }
+
+  List<String> _parseSkills(dynamic value) {
+    if (value is List) {
+      return value.map((e) => e.toString()).toList();
+    }
+    return const [];
+  }
+
   void setRequestedRole(UserRole role) {
     _requestedRole = role;
   }
@@ -121,10 +135,15 @@ class AppState extends ChangeNotifier {
         _currentRole = mappedRole;
         _currentUser = AppUser(
           id: data['uid'] ?? firebaseUser.uid,
-          name: firebaseUser.displayName ?? 'User',
+          name: data['name'] ?? firebaseUser.displayName ?? 'User',
           email: data['email'] ?? firebaseUser.email ?? '',
           role: mappedRole,
           ngoId: data['organization_id'],
+          phone: data['phone'],
+          skills: _parseSkills(data['skills']),
+          location: data['location'],
+          isAvailable: data['is_available'] ?? true,
+          createdAt: _parseBackendDate(data['created_at']),
         );
       } else {
         _backendError = "Permission denied or backend error. Code: ${response.statusCode}";
