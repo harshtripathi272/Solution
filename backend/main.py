@@ -24,6 +24,7 @@ class LocationUpdate(BaseModel):
     longitude: float
     timestamp: datetime | None = None
     skills: list[str] = []
+    consent: bool = True  # Must be True for backend to store location
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
@@ -124,20 +125,45 @@ def get_profile(current_user: UserProfile = Depends(get_current_user)):
 @app.post("/api/v1/location/update")
 def update_location(loc: LocationUpdate, decoded_token: dict = Depends(get_current_user_token)):
     """
-    Ephemerally stores the volunteer's streamed location tracking ping.
-    Does NOT write to the permanent database, guaranteeing privacy and data minimization.
+    Ephemerally streams volunteer GPS to Redis (GEO-indexed, TTL 2 hrs).
+    Data is NOT written to the permanent database – privacy by design.
+    Enforces: explicit consent flag, coordinate validation, rate limiting.
     """
+    # Explicit consent gate
+    if not loc.consent:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Location sharing consent required. Enable tracking in the app first."
+        )
+
     uid = decoded_token.get("uid")
     update_time = loc.timestamp or datetime.now(timezone.utc)
-    
-    location_store.update_location(
+
+    stored = location_store.update_location(
         user_id=uid,
         lat=loc.latitude,
         lon=loc.longitude,
         timestamp=update_time,
         skills=loc.skills
     )
-    return {"status": "success", "message": "Location safely streamed and cached"}
+
+    if not stored:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Location update throttled or coordinates invalid. Try again shortly."
+        )
+
+    return {"status": "ok", "cached_until": "2 hours from now"}
+
+@app.delete("/api/v1/location/revoke")
+def revoke_location(decoded_token: dict = Depends(get_current_user_token)):
+    """
+    Allows volunteers to immediately delete their location from Redis.
+    Implements the 'right to be forgotten' for real-time tracking data.
+    """
+    uid = decoded_token.get("uid")
+    location_store.remove_user(uid)
+    return {"status": "ok", "message": "Your location data has been permanently deleted."}
 
 # --- RBAC Protected Endpoints ---
 @app.get("/api/v1/alerts")

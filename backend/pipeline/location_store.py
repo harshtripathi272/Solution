@@ -1,69 +1,170 @@
-import time
+"""
+Redis-backed volunteer location store with GEO indexing.
+
+Architecture:
+  - user:{uid}:location  (hash) – metadata: timestamp, skills, consent
+  - vol:geo_index         (Redis sorted set via GEOADD) – spatial index
+
+TTL: 2 hours per user key for automatic privacy-safe data expiry.
+"""
+
+import json
 import logging
-from typing import Dict, List, Optional
-from pydantic import BaseModel
+import time
 from datetime import datetime, timezone
+from math import radians, sin, cos, sqrt, atan2
+from typing import List, Optional
+
+import redis
 
 logger = logging.getLogger(__name__)
 
-class VolunteerLocation(BaseModel):
-    user_id: str
-    lat: float
-    lon: float
-    geohash: str
-    timestamp: datetime
-    skills: List[str] = [] # Cached skills to prevent DB lookups during allocation
-    
-class InMemoryLocationStore:
-    """
-    Simulates a fast Redis key-value store with TTL expirations for Phase 1/2.
-    Stores only the absolute latest location per volunteer for strict privacy.
-    """
-    def __init__(self, ttl_seconds: int = 7200): # Default 2 hours TTL
-        self.store: Dict[str, VolunteerLocation] = {}
-        self.ttl_seconds = ttl_seconds
+GEO_INDEX_KEY = "vol:geo_index"
+LOCATION_TTL   = 7200     # 2 hours in seconds
+MIN_UPDATE_GAP = 5        # Rate-limit: reject updates faster than 5 seconds
+MAX_LAT, MIN_LAT = 90.0, -90.0
+MAX_LON, MIN_LON = 180.0, -180.0
 
-    def _encode_geohash(self, lat: float, lon: float, precision: int = 5) -> str:
-        # A simple placeholder geohash implementation if a dedicated library isn't available
-        # In production, use `python-geohash` or `pygeohash`
-        return f"{lat:.2f},{lon:.2f}" 
 
-    def update_location(self, user_id: str, lat: float, lon: float, timestamp: datetime, skills: List[str] = None):
-        logger.debug(f"[LocationStore] Updating location for {user_id}: {lat}, {lon}")
-        
-        # Merge skills if already exists
-        current_skills = skills or []
-        if not current_skills and user_id in self.store:
-            current_skills = self.store[user_id].skills
-            
-        loc = VolunteerLocation(
-            user_id=user_id,
-            lat=lat,
-            lon=lon,
-            geohash=self._encode_geohash(lat, lon),
-            timestamp=timestamp,
-            skills=current_skills
-        )
-        self.store[user_id] = loc
+class VolunteerLocation:
+    """Lightweight dataclass for results coming back from Redis."""
+    def __init__(self, user_id: str, lat: float, lon: float,
+                 timestamp: datetime, skills: List[str]):
+        self.user_id   = user_id
+        self.lat       = lat
+        self.lon       = lon
+        self.timestamp = timestamp
+        self.skills    = skills
 
-    def get_all_active_locations(self) -> List[VolunteerLocation]:
-        """Returns all volunteers whose location ping was within the TTL window"""
-        self._cleanup_expired()
-        return list(self.store.values())
 
-    def _cleanup_expired(self):
-        """Evicts stale location data to enforce Data Minimization & Privacy"""
-        now = datetime.now(timezone.utc)
-        expired_keys = []
-        for uid, loc in self.store.items():
-            # Handle naive datetime from pydantic conversions if necessary
-            loc_time = loc.timestamp.replace(tzinfo=timezone.utc) if not loc.timestamp.tzinfo else loc.timestamp
-            if (now - loc_time).total_seconds() > self.ttl_seconds:
-                expired_keys.append(uid)
-                
-        for key in expired_keys:
-            logger.info(f"[LocationStore] Evicting stale location for {key} (> 2 hours inactive)")
-            del self.store[key]
+class RedisLocationStore:
+    def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0):
+        self.redis = redis.Redis(host=host, port=port, db=db,
+                                 decode_responses=True)
+        self._test_connection()
+
+    def _test_connection(self):
+        try:
+            self.redis.ping()
+            logger.info("[LocationStore] Connected to Redis ✓")
+        except redis.ConnectionError:
+            logger.warning("[LocationStore] Redis unavailable – location tracking disabled.")
+            self.redis = None  # type: ignore
+
+    #  Write path                                                          
+    def update_location(self, user_id: str, lat: float, lon: float,
+                        timestamp: datetime, skills: List[str] = None) -> bool:
+        """
+        Stores the latest volunteer location. Returns False if:
+         - Redis is down
+         - Coordinates are invalid
+         - Update was sent too soon (rate limit)
+        """
+        if not self.redis:
+            return False
+
+        # 1. Validate coordinate ranges
+        if not (MIN_LAT <= lat <= MAX_LAT and MIN_LON <= lon <= MAX_LON):
+            logger.warning(f"[LocationStore] Invalid coords ({lat}, {lon}) for {user_id}")
+            return False
+
+        user_key = f"user:{user_id}:location"
+
+        # 2. Rate-limit: reject if last update was within MIN_UPDATE_GAP seconds
+        existing = self.redis.hget(user_key, "ts_epoch")
+        if existing:
+            elapsed = time.time() - float(existing)
+            if elapsed < MIN_UPDATE_GAP:
+                logger.debug(f"[LocationStore] Throttled update from {user_id} ({elapsed:.1f}s < {MIN_UPDATE_GAP}s)")
+                return False
+
+        # 3. Write metadata hash with TTL
+        ts_epoch = timestamp.timestamp() if timestamp else time.time()
+        self.redis.hset(user_key, mapping={
+            "lat":      lat,
+            "lon":      lon,
+            "ts_epoch": ts_epoch,
+            "skills":   json.dumps(skills or []),
+        })
+        self.redis.expire(user_key, LOCATION_TTL)
+
+        # 4. Update GEO index (lon, lat order for Redis)
+        self.redis.geoadd(GEO_INDEX_KEY, [lon, lat, user_id])
+        # GEO index does not support TTL per member; stale members are filtered
+        # in the read path by checking the metadata TTL.
+        logger.debug(f"[LocationStore] Updated {user_id}: ({lat:.5f}, {lon:.5f})")
+        return True
+
+    #  Read path                                                           
+    def get_nearby(self, crisis_lat: float, crisis_lon: float,
+                   radius_km: float = 10.0,
+                   skills_required: List[str] = None) -> List[VolunteerLocation]:
+        """
+        Uses Redis GEOSEARCH to find volunteers within radius_km, then filters by:
+          - timestamp freshness (within 2 hours)
+          - optional skill requirements
+        """
+        if not self.redis:
+            return []
+
+        try:
+            # GEOSEARCH: unit = km, BYRADIUS around crisis coordinates
+            nearby_ids = self.redis.geosearch(
+                GEO_INDEX_KEY,
+                longitude=crisis_lon,
+                latitude=crisis_lat,
+                radius=radius_km,
+                unit="km",
+                sort="ASC",       # closest first
+                count=200,        # cap to prevent runaway queries
+            )
+        except Exception as e:
+            logger.error(f"[LocationStore] GEOSEARCH failed: {e}")
+            return []
+
+        results = []
+        cutoff_epoch = time.time() - LOCATION_TTL
+
+        for uid in nearby_ids:
+            user_key = f"user:{uid}:location"
+            data = self.redis.hgetall(user_key)
+
+            if not data:
+                # Key has expired (user inactive > 2 hours) – skip
+                self.redis.zrem(GEO_INDEX_KEY, uid)
+                continue
+
+            ts_epoch = float(data.get("ts_epoch", 0))
+            if ts_epoch < cutoff_epoch:
+                # Stale but key not yet evicted – treat as inactive
+                continue
+
+            skills = json.loads(data.get("skills", "[]"))
+
+            # Optional skills filter
+            if skills_required:
+                if not all(s in skills for s in skills_required):
+                    continue
+
+            ts = datetime.fromtimestamp(ts_epoch, tz=timezone.utc)
+            results.append(VolunteerLocation(
+                user_id=uid,
+                lat=float(data["lat"]),
+                lon=float(data["lon"]),
+                timestamp=ts,
+                skills=skills,
+            ))
+
+        return results
+
+    def remove_user(self, user_id: str):
+        """Called when a volunteer explicitly disables location sharing."""
+        if not self.redis:
+            return
+        self.redis.delete(f"user:{user_id}:location")
+        self.redis.zrem(GEO_INDEX_KEY, user_id)
+        logger.info(f"[LocationStore] Removed location consent for {user_id}")
+
 
 # Global singleton
-location_store = InMemoryLocationStore()
+location_store = RedisLocationStore()

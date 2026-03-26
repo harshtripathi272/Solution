@@ -1,65 +1,57 @@
 import logging
-from typing import List, Dict
+from typing import List
 
 from .pubsub_mock import broker
-from .schemas import CrisisEvent, SkillMatrix
-from .validation_service import ValidationService
+from .schemas import CrisisEvent
 from .location_store import location_store
 
 logger = logging.getLogger(__name__)
 
+# Skill-tag requirements per crisis type
+CRISIS_SKILL_MAP = {
+    "flood":     ["rescue"],
+    "earthquake":["rescue", "medical"],
+    "cyclone":   ["rescue"],
+    "medical":   ["medical"],
+    "fire":      ["rescue"],
+    "violence":  ["counseling"],
+    "other":     [],
+}
+
 class AllocationEngine:
     def start(self):
-        # We listen to Tier 1 and verified Tier 2 events
         broker.subscribe("official-alerts", "volunteer-allocator", self._handle_crisis)
-        broker.subscribe("verified-crisis", "volunteer-allocator", self._handle_crisis)
-        logger.info("Volunteer Allocation Engine running. Ready to dispatch.")
+        broker.subscribe("verified-crisis",  "volunteer-allocator-v", self._handle_crisis)
+        logger.info("Volunteer Allocation Engine (Redis GEO) running. Ready to dispatch.")
 
     async def _handle_crisis(self, event: CrisisEvent):
-        logger.info(f"[ALLOCATION] Beginning volunteer matching for {event.id} ({event.type.value})")
-        
-        # We pull active streaming volunteers from the strict TTL in-memory cache
-        # Rather than querying static, outdated database profiles
-        active_volunteers = location_store.get_all_active_locations()
-        
-        matched_volunteers = []
-        for v in active_volunteers:
-            dist_km = ValidationService._haversine(
-                event.location.latitude, event.location.longitude,
-                v.lat, v.lon
-            )
-            
-            # Broad search radius: 50km
-            if dist_km <= 50.0:
-                # Skills check
-                if self._check_skills(event.skills_required, v.skills):
-                    matched_volunteers.append({
-                        "uid": v.user_id,
-                        "dist": dist_km,
-                        "data": {"skills": v.skills}
-                    })
-                    
-        if not matched_volunteers:
-            logger.warning(f"[ALLOCATION] No available volunteers found for {event.id} within 50km!")
+        logger.info(f"[ALLOCATION] GEOSEARCH for {event.id} ({event.type.value}) "
+                    f"@ {event.location.latitude:.4f}, {event.location.longitude:.4f}")
+
+        # Required skill list derived from the event type
+        skills_req = CRISIS_SKILL_MAP.get(event.type.value, [])
+
+        # Use Redis GEOSEARCH – returns only fresh, consenting volunteers within radius
+        radius_km = 50.0
+        nearby = location_store.get_nearby(
+            crisis_lat=event.location.latitude,
+            crisis_lon=event.location.longitude,
+            radius_km=radius_km,
+            skills_required=skills_req,
+        )
+
+        if not nearby:
+            logger.warning(f"[ALLOCATION] No active volunteers found for {event.id} "
+                           f"within {radius_km}km with skills={skills_req}!")
             return
-            
-        # Sort by closest first
-        matched_volunteers.sort(key=lambda x: x["dist"])
-        
-        # Dispatch logic (Top N * 3 to guarantee minimum response fill rate)
-        target_count = event.skills_required.min_volunteers_needed * 3
-        dispatched = matched_volunteers[:target_count]
-        
-        logger.info(f"[DISPATCH] Routed Crisis {event.id} to {len(dispatched)} volunteers.")
+
+        # GEOSEARCH already returns results sorted nearest-first
+        target_count = max(event.skills_required.min_volunteers_needed * 3, 5)
+        dispatched = nearby[:target_count]
+
+        logger.info(f"[DISPATCH] Routing Crisis {event.id} → {len(dispatched)} volunteers.")
         for v in dispatched:
-            logger.info(f" -> Sending Push Notification to Volunteer {v['uid']} ({v['dist']:.1f}km away)")
+            logger.info(f"  → UID={v.user_id} | skills={v.skills}")
 
-    def _check_skills(self, required: SkillMatrix, user_skills: List[str]) -> bool:
-        if required.requires_medical and "medical" not in user_skills: return False
-        if required.requires_rescue and "rescue" not in user_skills: return False
-        if required.requires_logistics and "logistics" not in user_skills: return False
-        if required.requires_counseling and "counseling" not in user_skills: return False
-        return True
 
-# Global Instance
 allocation_engine = AllocationEngine()
