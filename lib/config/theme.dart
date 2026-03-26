@@ -21,6 +21,7 @@ class AppColors {
   
   static const Color onSurface = Color(0xFF1B1C1A);
   static const Color onSurfaceVariant = Color(0xFF434840);
+  static const Color outline = Color(0xFF73796F);
   static const Color outlineVariant = Color(0xFFC3C8BD);
 
   // Status Colors (Earthy variants)

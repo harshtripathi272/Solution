@@ -79,7 +79,7 @@ class AppShell extends StatelessWidget {
               ),
               Switch(
                 value: state.locationService?.isTracking ?? false,
-                activeColor: AppColors.error,
+                activeThumbColor: AppColors.error,
                 onChanged: (_) => state.toggleLocationTracking(),
               ),
             ],

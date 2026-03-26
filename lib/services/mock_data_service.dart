@@ -1,4 +1,3 @@
-import 'dart:math';
 import '../models/field_report_model.dart';
 import '../models/task_model.dart';
 import '../models/user_model.dart';
@@ -7,8 +6,6 @@ import '../models/crisis_alert_model.dart';
 /// MockDataService — provides realistic sample data for the MVP prototype.
 /// This will be replaced with Firebase in production.
 class MockDataService {
-  static final _random = Random();
-
   static List<FieldReport> getFieldReports() => [
         FieldReport(
           id: 'fr-001',

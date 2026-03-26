@@ -22,6 +22,7 @@ class RegisterRequest(BaseModel):
 class LocationUpdate(BaseModel):
     latitude: float
     longitude: float
+    timestamp: datetime | None = None
     skills: list[str] = []
 
 # Configure basic logging
@@ -127,12 +128,13 @@ def update_location(loc: LocationUpdate, decoded_token: dict = Depends(get_curre
     Does NOT write to the permanent database, guaranteeing privacy and data minimization.
     """
     uid = decoded_token.get("uid")
+    update_time = loc.timestamp or datetime.now(timezone.utc)
     
     location_store.update_location(
         user_id=uid,
         lat=loc.latitude,
         lon=loc.longitude,
-        timestamp=loc.timestamp,
+        timestamp=update_time,
         skills=loc.skills
     )
     return {"status": "success", "message": "Location safely streamed and cached"}
