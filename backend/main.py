@@ -26,6 +26,14 @@ class LocationUpdate(BaseModel):
     skills: list[str] = []
     consent: bool = True  # Must be True for backend to store location
 
+class ProfileUpdate(BaseModel):
+    name: str
+    phone: str | None = None
+    location: str | None = None
+    skills: list[str] | None = None
+    organization_id: str | None = None
+    is_available: bool | None = None
+
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -164,6 +172,41 @@ def revoke_location(decoded_token: dict = Depends(get_current_user_token)):
     uid = decoded_token.get("uid")
     location_store.remove_user(uid)
     return {"status": "ok", "message": "Your location data has been permanently deleted."}
+
+@app.put("/api/v1/profile/update")
+def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(get_current_user_token)):
+    """
+    Update user profile information (name, phone, location, skills, organization, availability).
+    Called by Flutter app when user edits their profile.
+    """
+    uid = decoded_token.get("uid")
+    
+    try:
+        user_ref = db.collection("users").document(uid)
+        update_data = {
+            "name": profile.name,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
+        
+        # Add optional fields if provided
+        if profile.phone is not None:
+            update_data["phone"] = profile.phone
+        if profile.location is not None:
+            update_data["location"] = profile.location
+        if profile.skills is not None:
+            update_data["skills"] = profile.skills
+        if profile.organization_id is not None:
+            update_data["organization_id"] = profile.organization_id
+        if profile.is_available is not None:
+            update_data["is_available"] = profile.is_available
+            
+        user_ref.update(update_data)
+        
+        logger.info(f"Profile updated for user {uid}")
+        return {"status": "ok", "message": "Profile updated successfully"}
+    except Exception as e:
+        logger.error(f"Failed to update profile for user {uid}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update profile: {str(e)}")
 
 # --- RBAC Protected Endpoints ---
 @app.get("/api/v1/alerts")

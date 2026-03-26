@@ -8,8 +8,11 @@ import 'screens/auth_wrapper.dart';
 import 'screens/coordinator/coordinator_dashboard_screen.dart';
 import 'screens/coordinator/heatmap_screen.dart';
 import 'screens/coordinator/sdg_dashboard_screen.dart';
+import 'screens/coordinator/coordinator_profile_screen.dart';
 import 'screens/volunteer/task_feed_screen.dart';
+import 'screens/volunteer/volunteer_profile_screen.dart';
 import 'screens/ngo_worker/report_submission_screen.dart';
+import 'screens/ngo_worker/ngo_worker_profile_screen.dart';
 
 class SevasetuApp extends StatelessWidget {
   const SevasetuApp({super.key});
@@ -126,6 +129,7 @@ class AppShell extends StatelessWidget {
       case 0: return const CoordinatorDashboard();
       case 1: return const HeatmapScreen();
       case 2: return const SDGDashboardScreen();
+      case 3: return const CoordinatorProfileScreen();
       default: return const CoordinatorDashboard();
     }
   }
@@ -133,7 +137,7 @@ class AppShell extends StatelessWidget {
   Widget _buildVolunteerBody(AppState state) {
     switch (state.currentNavIndex) {
       case 0: return const VolunteerTaskFeed();
-      case 1: return const Scaffold(body: Center(child: Text('Profile View')));
+      case 1: return const VolunteerProfileScreen();
       default: return const VolunteerTaskFeed();
     }
   }
@@ -141,7 +145,7 @@ class AppShell extends StatelessWidget {
   Widget _buildNgoWorkerBody(AppState state) {
     switch (state.currentNavIndex) {
       case 0: return const ReportSubmissionScreen();
-      case 1: return const Scaffold(body: Center(child: Text('History View')));
+      case 1: return const NGOWorkerProfileScreen();
       default: return const ReportSubmissionScreen();
     }
   }
@@ -202,6 +206,7 @@ class AppShell extends StatelessWidget {
           {'icon': Icons.home_filled, 'label': 'Dashboard'},
           {'icon': Icons.map, 'label': 'Areas'},
           {'icon': Icons.analytics, 'label': 'Impact'},
+          {'icon': Icons.person, 'label': 'Profile'},
         ];
       case UserRole.volunteer:
         return [
@@ -211,7 +216,7 @@ class AppShell extends StatelessWidget {
       case UserRole.ngoWorker:
         return [
           {'icon': Icons.add_circle, 'label': 'Report'},
-          {'icon': Icons.list_alt, 'label': 'History'},
+          {'icon': Icons.person, 'label': 'Profile'},
         ];
     }
   }
