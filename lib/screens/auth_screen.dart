@@ -56,6 +56,8 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _submitGoogle() async {
+    if (_isLoading) return;
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;

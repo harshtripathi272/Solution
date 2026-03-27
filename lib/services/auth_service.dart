@@ -5,6 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+  Future<UserCredential?>? _googleSignInInFlight;
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
   
@@ -19,22 +20,35 @@ class AuthService {
   }
 
   Future<UserCredential?> signInWithGoogle() async {
-    if (kIsWeb) {
-      // On Web, use Firebase's native Popup directly.
-      // This immediately bypasses the `google_sign_in` deprecation issues and popup blockers.
-      GoogleAuthProvider authProvider = GoogleAuthProvider();
-      return await _auth.signInWithPopup(authProvider);
-    } else {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null;
+    // Prevent duplicate concurrent sign-in attempts from completing twice.
+    if (_googleSignInInFlight != null) {
+      return _googleSignInInFlight!;
+    }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+    _googleSignInInFlight = () async {
+      if (kIsWeb) {
+        // On Web, use Firebase's native Popup directly.
+        // This bypasses popup flow conflicts in google_sign_in_web.
+        GoogleAuthProvider authProvider = GoogleAuthProvider();
+        return await _auth.signInWithPopup(authProvider);
+      } else {
+        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+        if (googleUser == null) return null;
 
-      return await _auth.signInWithCredential(credential);
+        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+        final AuthCredential credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+
+        return await _auth.signInWithCredential(credential);
+      }
+    }();
+
+    try {
+      return await _googleSignInInFlight!;
+    } finally {
+      _googleSignInInFlight = null;
     }
   }
 

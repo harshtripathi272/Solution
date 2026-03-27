@@ -34,8 +34,8 @@ class IngestionManager:
                 interval_seconds=int(os.getenv("INGEST_WEATHER_INTERVAL", "420")),
             ),
             IndiaNewsIngestor(
-                news_api_key=os.getenv("NEWSAPI_KEY", ""),
-                newsdata_api_key=os.getenv("NEWSDATA_API_KEY", ""),
+                news_api_key=os.getenv("NEWS_API_KEY", ""),
+                newsdata_api_key=os.getenv("NEWS_DATA_API_KEY", ""),
                 interval_seconds=int(os.getenv("INGEST_NEWS_INTERVAL", "420")),
             ),
         ]

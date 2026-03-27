@@ -61,6 +61,21 @@ class PeriodicIngestor(ABC):
                     resp = await client.get(url, params=params, headers=headers)
                     resp.raise_for_status()
                     return resp.json()
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                # Invalid or missing credentials should not crash worker loops.
+                if status_code in {401, 403}:
+                    logger.error("[%s] auth failed for %s (status=%s). Skipping this cycle.", self.name, url, status_code)
+                    return {}
+                # Most 4xx are non-retriable for this cycle (bad params, forbidden endpoints, etc.).
+                if 400 <= status_code < 500 and status_code != 429:
+                    logger.error("[%s] non-retriable client error for %s (status=%s). Skipping this cycle.", self.name, url, status_code)
+                    return {}
+                if attempt == retries:
+                    raise
+                backoff = 1.5 * (attempt + 1)
+                logger.warning("[%s] request failed (status=%s), retrying in %.1fs", self.name, status_code, backoff)
+                await asyncio.sleep(backoff)
             except Exception as exc:
                 if attempt == retries:
                     raise

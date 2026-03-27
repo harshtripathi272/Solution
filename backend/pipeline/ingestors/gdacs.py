@@ -2,7 +2,6 @@ import httpx
 import logging
 from datetime import datetime, timezone
 import uuid
-
 from pipeline.schemas import IngestionLocation, UnifiedIngestionEvent
 from .base import PeriodicIngestor
 
@@ -17,6 +16,30 @@ class GDACSIngestor(PeriodicIngestor):
 
     def __init__(self, interval_seconds: int = 600):
         super().__init__(name="GDACS", interval_seconds=interval_seconds)
+
+    @staticmethod
+    def _is_india_event(props: dict, geometry: dict) -> bool:
+        country = str(props.get("country", "")).strip().lower()
+        iso3 = str(props.get("iso3", "")).strip().lower()
+        iso2 = str(props.get("iso2", "")).strip().lower()
+        if "india" in country or iso3 == "ind" or iso2 == "in":
+            return True
+        try:
+            coords = geometry.get("coordinates", [])
+            if not coords or len(coords) < 2:
+                return False
+
+            lon, lat = coords[0], coords[1]
+
+            # India bounding box
+            LAT_MIN, LAT_MAX = 6.5, 37.5
+            LON_MIN, LON_MAX = 68.0, 97.5
+
+            return LAT_MIN <= lat <= LAT_MAX and LON_MIN <= lon <= LON_MAX
+
+        except Exception:
+            return False
+
 
     async def fetch_events(self) -> list[UnifiedIngestionEvent]:
         logger.info("[GDACS] Fetching latest official alerts from GDACS...")
@@ -35,6 +58,9 @@ class GDACSIngestor(PeriodicIngestor):
         for feature in features:
             props = feature.get("properties", {})
             geom = feature.get("geometry", {})
+
+            if not self._is_india_event(props,geom):
+                continue
             
             # Map GDACS event type codes to ours
             event_type = str(props.get("eventtype", "")).lower()

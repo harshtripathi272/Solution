@@ -20,6 +20,7 @@ class IndiaNewsIngestor(PeriodicIngestor):
         super().__init__(name="IndiaNews", interval_seconds=interval_seconds)
         self.news_api_key = news_api_key
         self.newsdata_api_key = newsdata_api_key
+        self.limit=5
 
     async def fetch_events(self) -> list[UnifiedIngestionEvent]:
         if not self.news_api_key and not self.newsdata_api_key:
@@ -43,7 +44,7 @@ class IndiaNewsIngestor(PeriodicIngestor):
                 "q": query,
                 "language": "en",
                 "sortBy": "publishedAt",
-                "pageSize": 25,
+                "pageSize": self.limit,
             },
             headers={"X-Api-Key": self.news_api_key},
         )

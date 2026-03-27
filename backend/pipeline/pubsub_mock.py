@@ -41,8 +41,10 @@ class Topic:
         self.subscriptions.append(sub)
         sub.start()
 
-    async def publish(self, message: CrisisEvent):
-        logger.info(f"[Topic: {self.name}] Publishing Event: {message.id} | Tier: {message.tier}")
+    async def publish(self, message: Any):
+        event_id = getattr(message, "id", "unknown")
+        tier = getattr(message, "tier", "n/a")
+        logger.info(f"[Topic: {self.name}] Publishing Event: {event_id} | Tier: {tier}")
         for sub in self.subscriptions:
             await sub.queue.put(message)
 
@@ -61,7 +63,7 @@ class PubSubBroker:
         topic.add_subscription(sub)
         return sub
 
-    async def publish(self, topic_name: str, message: CrisisEvent):
+    async def publish(self, topic_name: str, message: Any):
         topic = self.create_topic(topic_name)
         await topic.publish(message)
 
