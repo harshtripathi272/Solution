@@ -5,7 +5,6 @@ import '../models/field_report_model.dart';
 import '../models/task_model.dart';
 import '../models/user_model.dart';
 import '../models/crisis_alert_model.dart';
-import '../services/mock_data_service.dart';
 import '../services/api_client.dart';
 import '../services/location_service.dart';
 
@@ -32,7 +31,6 @@ class AppState extends ChangeNotifier {
 
   AppState() {
     _locationService = LocationService(this);
-    _loadMockData(); 
   }
 
   DateTime _parseBackendDate(dynamic value) {
@@ -85,15 +83,6 @@ class AppState extends ChangeNotifier {
       _tasks.where((t) => t.urgency == 'Critical' && t.status != TaskStatus.completed).length;
   int get totalPeopleAffected =>
       _reports.fold(0, (sum, r) => sum + r.estimatedPeopleAffected);
-
-  void _loadMockData() {
-    _reports = MockDataService.getFieldReports();
-    _tasks = MockDataService.getTasks();
-    _volunteers = MockDataService.getVolunteers();
-    _crisisAlerts = MockDataService.getCrisisAlerts();
-    _impactMetrics = MockDataService.getImpactMetrics();
-    notifyListeners();
-  }
 
   // Initialize actual user from Firebase and Backend
   Future<void> initializeUser(User firebaseUser) async {

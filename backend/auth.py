@@ -6,6 +6,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
 from models import UserProfile, UserRole
 
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file if present
+
 # Initialize Firebase Admin
 cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase_service_account.json")
 if os.path.exists(cred_path):

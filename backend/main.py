@@ -13,7 +13,7 @@ from pydantic import BaseModel
 # Pipeline Imports
 from pipeline.validation_service import validation_service
 from pipeline.allocation_engine import allocation_engine
-from pipeline.ingestors.gdacs import gdacs_ingestor
+from pipeline.ingestors.manager import ingestion_manager
 from pipeline.location_store import location_store
 
 class RegisterRequest(BaseModel):
@@ -34,26 +34,22 @@ class ProfileUpdate(BaseModel):
     organization_id: str | None = None
     is_available: bool | None = None
 
+
+class SurveyIngestRequest(BaseModel):
+    file_path: str
+
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-async def gdacs_polling_loop():
-    while True:
-        try:
-            await gdacs_ingestor.fetch_and_publish()
-        except Exception as e:
-            logger.error(f"GDACS Polling Error: {e}")
-        await asyncio.sleep(600)  # Fetch every 10 minutes
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("---| Booting SevaSetu Crisis Intelligence Pipeline |---")
     validation_service.start()
     allocation_engine.start()
-    # Start background polling tasks
-    asyncio.create_task(gdacs_polling_loop())
+    ingestion_manager.start()
     yield
+    await ingestion_manager.stop()
     logger.info("---| Shutting down Crisis Pipeline |---")
 
 app = FastAPI(
@@ -172,6 +168,29 @@ def revoke_location(decoded_token: dict = Depends(get_current_user_token)):
     uid = decoded_token.get("uid")
     location_store.remove_user(uid)
     return {"status": "ok", "message": "Your location data has been permanently deleted."}
+
+
+@app.post("/api/v1/ingestion/survey")
+async def ingest_survey_data(
+    payload: SurveyIngestRequest,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
+):
+    """On-demand local CSV/JSON ingestion for NGO survey or field data."""
+    try:
+        count = await ingestion_manager.ingest_survey_file(payload.file_path)
+        return {
+            "status": "ok",
+            "ingested": count,
+            "file_path": payload.file_path,
+            "requested_by": current_user.uid,
+        }
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("Survey ingestion failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Survey ingestion failed")
 
 @app.put("/api/v1/profile/update")
 def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(get_current_user_token)):
