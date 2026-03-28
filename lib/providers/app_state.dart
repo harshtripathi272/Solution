@@ -1,14 +1,22 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/field_report_model.dart';
 import '../models/task_model.dart';
 import '../models/user_model.dart';
 import '../models/crisis_alert_model.dart';
-import '../services/mock_data_service.dart';
+import '../services/api_client.dart';
+import '../services/location_service.dart';
 
 class AppState extends ChangeNotifier {
-  // Current user (simulated login)
-  UserRole _currentRole = UserRole.coordinator;
-  late AppUser _currentUser;
+  // Current user
+  ApiClient? _apiClient;
+  LocationService? _locationService;
+  UserRole _currentRole = UserRole.volunteer; 
+  AppUser? _currentUser;
+  bool _isLoadingUser = false;
+  final bool _isLoading = false;
+  String? _backendError;
 
   // Data
   List<FieldReport> _reports = [];
@@ -19,15 +27,40 @@ class AppState extends ChangeNotifier {
 
   // UI state
   int _currentNavIndex = 0;
-  bool _isLoading = false;
+  UserRole? _requestedRole;
 
   AppState() {
-    _loadData();
+    _locationService = LocationService(this);
+  }
+
+  DateTime _parseBackendDate(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      return DateTime.tryParse(value) ?? DateTime.now();
+    }
+    return DateTime.now();
+  }
+
+  List<String> _parseSkills(dynamic value) {
+    if (value is List) {
+      return value.map((e) => e.toString()).toList();
+    }
+    return const [];
+  }
+
+  void setRequestedRole(UserRole role) {
+    _requestedRole = role;
   }
 
   // Getters
   UserRole get currentRole => _currentRole;
-  AppUser get currentUser => _currentUser;
+  AppUser? get currentUser => _currentUser;
+  bool get isLoadingUser => _isLoadingUser;
+  bool get isLoading => _isLoading;
+  String? get backendError => _backendError;
+  ApiClient? get apiClient => _apiClient;
+  LocationService? get locationService => _locationService;
+  bool get isAuthenticated => _currentUser != null;
+
   List<FieldReport> get reports => _reports;
   List<VolunteerTask> get tasks => _tasks;
   List<VolunteerTask> get openTasks =>
@@ -44,7 +77,6 @@ class AppState extends ChangeNotifier {
       _crisisAlerts.where((a) => a.isActive).toList();
   Map<String, dynamic> get impactMetrics => _impactMetrics;
   int get currentNavIndex => _currentNavIndex;
-  bool get isLoading => _isLoading;
 
   // Stats
   int get criticalTaskCount =>
@@ -52,54 +84,77 @@ class AppState extends ChangeNotifier {
   int get totalPeopleAffected =>
       _reports.fold(0, (sum, r) => sum + r.estimatedPeopleAffected);
 
-  void _loadData() {
-    _reports = MockDataService.getFieldReports();
-    _tasks = MockDataService.getTasks();
-    _volunteers = MockDataService.getVolunteers();
-    _crisisAlerts = MockDataService.getCrisisAlerts();
-    _impactMetrics = MockDataService.getImpactMetrics();
-    _currentUser = AppUser(
-      id: 'coord-001',
-      name: 'Arjun Kapoor',
-      email: 'arjun@sevasetu.org',
-      role: UserRole.coordinator,
-      location: 'Mumbai',
-      latitude: 19.0760,
-      longitude: 72.8777,
-    );
-    notifyListeners();
-  }
-
-  void switchRole(UserRole role) {
-    _currentRole = role;
-    switch (role) {
-      case UserRole.coordinator:
-        _currentUser = AppUser(
-          id: 'coord-001',
-          name: 'Arjun Kapoor',
-          email: 'arjun@sevasetu.org',
-          role: UserRole.coordinator,
-          location: 'Mumbai',
-        );
-      case UserRole.volunteer:
-        _currentUser = _volunteers.first;
-      case UserRole.ngoWorker:
-        _currentUser = AppUser(
-          id: 'ngo-worker-001',
-          name: 'Priya Sharma',
-          email: 'priya@goonj.org',
-          role: UserRole.ngoWorker,
-          ngoId: 'ngo-goonj',
-          location: 'Mumbai',
-        );
+  // Initialize actual user from Firebase and Backend
+  Future<void> initializeUser(User firebaseUser) async {
+    // 12-Hour Session Security Limit
+    final lastSignIn = firebaseUser.metadata.lastSignInTime;
+    if (lastSignIn != null) {
+      if (DateTime.now().difference(lastSignIn).inHours >= 12) {
+        // Enforce strict re-authentication
+        await FirebaseAuth.instance.signOut();
+        return;
+      }
     }
-    _currentNavIndex = 0;
+
+    _isLoadingUser = true;
+    _backendError = null;
     notifyListeners();
+
+    try {
+      _apiClient = ApiClient(baseUrl: "http://127.0.0.1:8000"); 
+      
+      // Pass the requested role if the user just signed up
+      final payload = <String, dynamic>{};
+      if (_requestedRole != null) {
+        payload['requested_role'] = _requestedRole!.name;
+        _requestedRole = null; // Consume the requested role
+      }
+
+      // Calls FastApi to verify token and return profile
+      final response = await _apiClient!.post("/api/v1/auth/register", payload);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        // Map backend role enum to local Flutter enum
+        UserRole mappedRole = UserRole.volunteer;
+        if (data['role'] == 'coordinator') mappedRole = UserRole.coordinator;
+        if (data['role'] == 'ngo_worker') mappedRole = UserRole.ngoWorker;
+
+        _currentRole = mappedRole;
+        _currentUser = AppUser(
+          id: data['uid'] ?? firebaseUser.uid,
+          name: data['name'] ?? firebaseUser.displayName ?? 'User',
+          email: data['email'] ?? firebaseUser.email ?? '',
+          role: mappedRole,
+          ngoId: data['organization_id'],
+          phone: data['phone'],
+          skills: _parseSkills(data['skills']),
+          location: data['location'],
+          isAvailable: data['is_available'] ?? true,
+          createdAt: _parseBackendDate(data['created_at']),
+        );
+      } else {
+        _backendError = "Permission denied or backend error. Code: ${response.statusCode}";
+      }
+    } catch (e) {
+      _backendError = "Could not connect to the SevaSetu secure server.";
+    } finally {
+      _isLoadingUser = false;
+      notifyListeners();
+    }
   }
 
   void setNavIndex(int index) {
     _currentNavIndex = index;
     notifyListeners();
+  }
+
+  Future<void> toggleLocationTracking() async {
+    if (_locationService != null) {
+      await _locationService!.toggleTracking();
+      notifyListeners();
+    }
   }
 
   void addFieldReport(FieldReport report) {

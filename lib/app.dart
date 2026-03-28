@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:animate_do/animate_do.dart';
 import 'config/theme.dart';
 import 'models/user_model.dart';
 import 'providers/app_state.dart';
+import 'services/auth_service.dart';
+import 'screens/auth_wrapper.dart';
 import 'screens/coordinator/coordinator_dashboard_screen.dart';
 import 'screens/coordinator/heatmap_screen.dart';
 import 'screens/coordinator/sdg_dashboard_screen.dart';
+import 'screens/coordinator/coordinator_profile_screen.dart';
 import 'screens/volunteer/task_feed_screen.dart';
+import 'screens/volunteer/volunteer_profile_screen.dart';
 import 'screens/ngo_worker/report_submission_screen.dart';
+import 'screens/ngo_worker/ngo_worker_profile_screen.dart';
 
 class SevasetuApp extends StatelessWidget {
   const SevasetuApp({super.key});
@@ -19,7 +23,7 @@ class SevasetuApp extends StatelessWidget {
       title: 'SevaSetu',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const AppShell(),
+      home: const AuthWrapper(),
     );
   }
 }
@@ -42,53 +46,69 @@ class AppShell extends StatelessWidget {
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context, AppState state) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 380; // S8+ width is roughly 360 logical pixels
+    
     return AppBar(
-      title: Row(children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppColors.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.spa, color: AppColors.onPrimary, size: 20),
-        ),
-        const SizedBox(width: 12),
-        Text('SevaSetu', style: Theme.of(context).textTheme.headlineSmall),
-      ]),
-      actions: [
-        PopupMenuButton<UserRole>(
-          icon: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      title: Row(
+        mainAxisSize: MainAxisSize.min, // Prevents row from infinitely expanding
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: AppColors.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(9999),
+              color: AppColors.primaryContainer,
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(_roleIcon(state.currentRole), size: 16, color: AppColors.primary),
+            child: const Icon(Icons.spa, color: AppColors.onPrimary, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text('SevaSetu', 
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        if (state.currentRole == UserRole.volunteer)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.location_on, 
+                size: 16, 
+                color: state.locationService?.isTracking == true ? AppColors.error : AppColors.outline
+              ),
+              Switch(
+                value: state.locationService?.isTracking ?? false,
+                activeThumbColor: AppColors.error,
+                onChanged: (_) => state.toggleLocationTracking(),
+              ),
+            ],
+          ),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(9999),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(_roleIcon(state.currentRole), size: 16, color: AppColors.primary),
+            if (!isSmallScreen) ...[
               const SizedBox(width: 8),
               Text(_roleName(state.currentRole),
-                  style: Theme.of(context).textTheme.labelLarge),
-              const SizedBox(width: 4),
-              const Icon(Icons.keyboard_arrow_down, size: 16, color: AppColors.onSurfaceVariant),
-            ]),
-          ),
-          itemBuilder: (context) => UserRole.values.map((role) => PopupMenuItem(
-                value: role,
-                child: Row(children: [
-                  Icon(_roleIcon(role), size: 18, color: state.currentRole == role ? AppColors.primary : AppColors.onSurfaceVariant),
-                  const SizedBox(width: 12),
-                  Text(_roleName(role), style: TextStyle(
-                    color: state.currentRole == role ? AppColors.primary : AppColors.onSurface,
-                    fontWeight: state.currentRole == role ? FontWeight.w600 : FontWeight.w400,
-                  )),
-                ]),
-              )).toList(),
-          onSelected: (role) => state.switchRole(role),
-          color: AppColors.surfaceContainerLowest,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          elevation: 12,
+                  style: Theme.of(context).textTheme.labelMedium),
+            ],
+          ]),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 4),
+        IconButton(
+          icon: const Icon(Icons.logout, color: AppColors.error),
+          onPressed: () => AuthService().signOut(),
+          tooltip: 'Sign Out',
+        ),
+        SizedBox(width: isSmallScreen ? 4 : 12),
       ],
     );
   }
@@ -109,6 +129,7 @@ class AppShell extends StatelessWidget {
       case 0: return const CoordinatorDashboard();
       case 1: return const HeatmapScreen();
       case 2: return const SDGDashboardScreen();
+      case 3: return const CoordinatorProfileScreen();
       default: return const CoordinatorDashboard();
     }
   }
@@ -116,7 +137,7 @@ class AppShell extends StatelessWidget {
   Widget _buildVolunteerBody(AppState state) {
     switch (state.currentNavIndex) {
       case 0: return const VolunteerTaskFeed();
-      case 1: return const Scaffold(body: Center(child: Text('Profile View')));
+      case 1: return const VolunteerProfileScreen();
       default: return const VolunteerTaskFeed();
     }
   }
@@ -124,13 +145,15 @@ class AppShell extends StatelessWidget {
   Widget _buildNgoWorkerBody(AppState state) {
     switch (state.currentNavIndex) {
       case 0: return const ReportSubmissionScreen();
-      case 1: return const Scaffold(body: Center(child: Text('History View')));
+      case 1: return const NGOWorkerProfileScreen();
       default: return const ReportSubmissionScreen();
     }
   }
 
   Widget _buildBottomNav(BuildContext context, AppState state) {
     final items = _getNavItems(state.currentRole);
+    final isSmallScreen = MediaQuery.of(context).size.width < 380;
+    
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surfaceContainerLowest,
@@ -138,16 +161,19 @@ class AppShell extends StatelessWidget {
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: items.asMap().entries.map((entry) {
               final isSelected = state.currentNavIndex == entry.key;
               return GestureDetector(
                 onTap: () => state.setNavIndex(entry.key),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 250),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isSmallScreen ? 14 : 24, 
+                    vertical: 10
+                  ),
                   decoration: BoxDecoration(
                     color: isSelected ? AppColors.surfaceContainerLow : Colors.transparent,
                     borderRadius: BorderRadius.circular(9999),
@@ -156,9 +182,12 @@ class AppShell extends StatelessWidget {
                     Icon(entry.value['icon'] as IconData, size: 24,
                         color: isSelected ? AppColors.primary : AppColors.outlineVariant),
                     if (isSelected) ...[
-                      const SizedBox(width: 12),
-                      Text(entry.value['label'] as String,
-                          style: Theme.of(context).textTheme.labelLarge),
+                      SizedBox(width: isSmallScreen ? 6 : 12),
+                      Flexible(
+                        child: Text(entry.value['label'] as String,
+                            style: Theme.of(context).textTheme.labelLarge,
+                            overflow: TextOverflow.ellipsis),
+                      ),
                     ],
                   ]),
                 ),
@@ -177,6 +206,7 @@ class AppShell extends StatelessWidget {
           {'icon': Icons.home_filled, 'label': 'Dashboard'},
           {'icon': Icons.map, 'label': 'Areas'},
           {'icon': Icons.analytics, 'label': 'Impact'},
+          {'icon': Icons.person, 'label': 'Profile'},
         ];
       case UserRole.volunteer:
         return [
@@ -186,7 +216,7 @@ class AppShell extends StatelessWidget {
       case UserRole.ngoWorker:
         return [
           {'icon': Icons.add_circle, 'label': 'Report'},
-          {'icon': Icons.list_alt, 'label': 'History'},
+          {'icon': Icons.person, 'label': 'Profile'},
         ];
     }
   }
