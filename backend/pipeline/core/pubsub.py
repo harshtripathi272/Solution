@@ -15,14 +15,17 @@ class Subscription:
     async def _worker(self):
         logger.info(f"Subscriber {self.name} listening...")
         while True:
+            msg = None
             try:
                 msg = await self.queue.get()
                 if msg is None:  # Shutdown signal
                     break
                 await self.callback(msg)
-                self.queue.task_done()
             except Exception as e:
                 logger.error(f"Error in subscriber {self.name}: {str(e)}")
+            finally:
+                if msg is not None:
+                    self.queue.task_done()
 
     def start(self):
         self._task = asyncio.create_task(self._worker())

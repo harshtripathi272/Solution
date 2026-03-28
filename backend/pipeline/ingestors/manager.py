@@ -3,8 +3,8 @@ import logging
 import os
 from pathlib import Path
 
-from pipeline.pubsub_mock import broker
-from pipeline.schemas import UnifiedIngestionEvent, to_crisis_event
+from pipeline.core.pubsub import broker
+from pipeline.core.schemas import UnifiedIngestionEvent
 from .gdacs import GDACSIngestor
 from .ndma_rss import NDMARSSIngestor
 from .news_api import IndiaNewsIngestor
@@ -75,10 +75,6 @@ class IngestionManager:
 
         for event in events:
             await broker.publish("ingestion-normalized", event)
-            if event.confidence_score >= 0.75:
-                await broker.publish("official-alerts", to_crisis_event(event, tier=1, verified=True))
-            else:
-                await broker.publish("citizen-reports", to_crisis_event(event, tier=2, verified=False))
 
         logger.info("[IngestionManager] On-demand survey ingestion published %d events", len(events))
         return len(events)

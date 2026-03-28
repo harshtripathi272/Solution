@@ -1,8 +1,14 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from enum import Enum
 import uuid
+
+# Centroid of India used as a fallback when an ingestor has no real coordinates.
+# Events carrying these exact coordinates are flagged for NER + geocoding.
+FALLBACK_INDIA_LAT = 20.5937
+FALLBACK_INDIA_LON = 78.9629
+_FALLBACK_TOLERANCE = 0.01  # degrees (~1 km)
 
 class SeverityLevel(str, Enum):
     CRITICAL = "red"
@@ -74,6 +80,27 @@ class UnifiedIngestionEvent(BaseModel):
     description: str = ""
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+    # --- Unification pipeline fields (set by unified_pipeline.py) ---
+    # 5-char geohash of the event location (~5 km cell). Populated after geocoding.
+    geohash: str = ""
+    # Administrative granularity at which location was resolved.
+    admin_level: str = "country"   # village | block | district | state | country
+    # Estimated number of people affected (populated from source metadata where available).
+    population_affected: int = 0
+    # Trust tier of the source: 1=official, 2=crowd/ngo, 3=social/contextual.
+    source_tier: int = 2
+    # True when the ingestor had no real coordinates — triggers NER + geocoding.
+    needs_geocoding: bool = False
+
+    @model_validator(mode="after")
+    def _auto_flag_geocoding(self) -> "UnifiedIngestionEvent":
+        """Auto-set needs_geocoding when the ingestor fell back to India centroid."""
+        lat_fallback = abs(self.location.latitude  - FALLBACK_INDIA_LAT) < _FALLBACK_TOLERANCE
+        lon_fallback = abs(self.location.longitude - FALLBACK_INDIA_LON) < _FALLBACK_TOLERANCE
+        if lat_fallback and lon_fallback and not self.needs_geocoding:
+            object.__setattr__(self, "needs_geocoding", True)
+        return self
+
 
 def infer_crisis_type(need_type: str) -> CrisisType:
     value = (need_type or "").strip().lower()
@@ -109,7 +136,16 @@ def to_crisis_event(event: UnifiedIngestionEvent, tier: int, verified: bool) -> 
     needs_medical = crisis_type == CrisisType.MEDICAL
     needs_rescue = crisis_type in {CrisisType.FLOOD, CrisisType.EARTHQUAKE, CrisisType.CYCLONE, CrisisType.FIRE}
 
-    geohash = f"{event.location.latitude:.3f}:{event.location.longitude:.3f}"
+    geohash = event.geohash
+    if not geohash:
+        try:
+            from pipeline.processing.geohash import encode as geohash_encode
+            geohash = geohash_encode(event.location.latitude, event.location.longitude, precision=5)
+        except Exception:
+            geohash = ""
+
+    if not geohash:
+        geohash = f"coord:{event.location.latitude:.3f}:{event.location.longitude:.3f}"
     description = event.description or f"{event.need_type} alert from {event.source}"
 
     return CrisisEvent(

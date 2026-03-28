@@ -2,7 +2,7 @@ import httpx
 import logging
 from datetime import datetime, timezone
 import uuid
-from pipeline.schemas import IngestionLocation, UnifiedIngestionEvent
+from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent
 from .base import PeriodicIngestor
 
 logger = logging.getLogger(__name__)

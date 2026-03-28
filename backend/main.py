@@ -1,20 +1,22 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 from contextlib import asynccontextmanager
 import asyncio
+import os
 
 from auth import get_current_user, get_current_user_token, RoleChecker, db, firestore
 from models import UserProfile, UserRole
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Pipeline Imports
-from pipeline.validation_service import validation_service
-from pipeline.allocation_engine import allocation_engine
+from pipeline.orchestrators.validation import validation_service
+from pipeline.orchestrators.allocation import allocation_engine
 from pipeline.ingestors.manager import ingestion_manager
-from pipeline.location_store import location_store
+from pipeline.storage.location import location_store
+from pipeline.orchestrators.unified import unified_pipeline
 
 class RegisterRequest(BaseModel):
     requested_role: str = "volunteer"
@@ -23,11 +25,11 @@ class LocationUpdate(BaseModel):
     latitude: float
     longitude: float
     timestamp: datetime | None = None
-    skills: list[str] = []
+    skills: list[str] = Field(default_factory=list)
     consent: bool = True  # Must be True for backend to store location
 
 class ProfileUpdate(BaseModel):
-    name: str
+    name: str | None = None
     phone: str | None = None
     location: str | None = None
     skills: list[str] | None = None
@@ -47,6 +49,7 @@ async def lifespan(app: FastAPI):
     logger.info("---| Booting SevaSetu Crisis Intelligence Pipeline |---")
     validation_service.start()
     allocation_engine.start()
+    unified_pipeline.start()        # data unification + persistent storage
     ingestion_manager.start()
     yield
     await ingestion_manager.stop()
@@ -60,10 +63,14 @@ app = FastAPI(
 )
 
 # CORS Middleware config
+_cors_origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "*").strip()
+_allow_origins = [origin.strip() for origin in _cors_origins_raw.split(",") if origin.strip()] or ["*"]
+_allow_credentials = not (len(_allow_origins) == 1 and _allow_origins[0] == "*")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_allow_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -157,7 +164,10 @@ def update_location(loc: LocationUpdate, decoded_token: dict = Depends(get_curre
             detail="Location update throttled or coordinates invalid. Try again shortly."
         )
 
-    return {"status": "ok", "cached_until": "2 hours from now"}
+    return {
+        "status": "ok",
+        "cached_until": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
+    }
 
 @app.delete("/api/v1/location/revoke")
 def revoke_location(decoded_token: dict = Depends(get_current_user_token)):
@@ -203,9 +213,12 @@ def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(ge
     try:
         user_ref = db.collection("users").document(uid)
         update_data = {
-            "name": profile.name,
             "updated_at": firestore.SERVER_TIMESTAMP,
         }
+
+        # Add required/optional fields only when provided.
+        if profile.name is not None:
+            update_data["name"] = profile.name
         
         # Add optional fields if provided
         if profile.phone is not None:
@@ -218,6 +231,9 @@ def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(ge
             update_data["organization_id"] = profile.organization_id
         if profile.is_available is not None:
             update_data["is_available"] = profile.is_available
+
+        if len(update_data) == 1:
+            raise HTTPException(status_code=400, detail="No profile fields provided for update")
             
         user_ref.update(update_data)
         
