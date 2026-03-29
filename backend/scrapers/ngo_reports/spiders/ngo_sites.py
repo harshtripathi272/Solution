@@ -105,19 +105,25 @@ class BaseNGOReportsSpider(scrapy.Spider):
         }
 
     def _extract_candidate_links(self, response: scrapy.http.Response) -> list[str]:
-        hrefs = response.css("a::attr(href)").getall()
         soup = BeautifulSoup(response.text, "html.parser")
-        hrefs.extend([a.get("href") for a in soup.select("a[href]")])
-
         links: list[str] = []
-        for href in hrefs:
-            if not href:
-                continue
+        
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            text = a.get_text(strip=True).lower()
             abs_url = urljoin(response.url, href)
-            low = abs_url.lower()
-            if any(k in low for k in KEYWORDS) or low.endswith(".pdf"):
+            low_url = abs_url.lower()
+            
+            # Check if either the URL or the anchor text contains a report keyword
+            is_candidate = (
+                any(k in low_url for k in KEYWORDS) or 
+                any(k in text for k in KEYWORDS) or 
+                low_url.endswith(".pdf")
+            )
+            
+            if is_candidate:
                 links.append(abs_url)
-
+        
         # Preserve order while de-duplicating.
         return list(dict.fromkeys(links))
 
@@ -214,7 +220,7 @@ class SewaBharatReportsSpider(BaseNGOReportsSpider):
 class NFIReportsSpider(BaseNGOReportsSpider):
     name = "nfi_reports"
     source_org = "National Foundation for India"
-    start_urls = ["https://nfi.org.in/publications"]
+    start_urls = ["https://nfi.org.in/climate-report"]
 
 
 class VHAIReportsSpider(BaseNGOReportsSpider):

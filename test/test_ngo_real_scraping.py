@@ -44,12 +44,12 @@ def run_spider_to_file(tmp_path):
         }
         
         process = CrawlerProcess(settings)
-        process.crawl(spider_cls, max_pages=1) # Only 1 page for smoke test
+        process.crawl(spider_cls, max_pages=5) # More than 1 to catch all links on the page
         process.start()
         
         items = []
         if output_file.exists():
-            with open(output_file, "r") as f:
+            with open(output_file, "r", encoding="utf-8") as f:
                 for line in f:
                     items.append(json.loads(line))
         return items
@@ -57,30 +57,31 @@ def run_spider_to_file(tmp_path):
 
 
 @pytest.mark.parametrize("spider_cls", [
-    #OxfamIndiaReportsSpider,
+    # OxfamIndiaReportsSpider,
     ActionAidIndiaReportsSpider,
     # PradanReportsSpider,
     # SphereIndiaReportsSpider,
     # SewaBharatReportsSpider,
-    # NFIReportsSpider,
-    # VHAIReportsSpider,
+    #NFIReportsSpider,
+    #VHAIReportsSpider,
 ])
 def test_ngo_spider_real_connectivity(spider_cls, run_spider_to_file): 
     """
     Smoke test to verify that the spider can connect to the target URL
-    and extract at least one valid item.
+    and extract all valid items.
     """
     items = run_spider_to_file(spider_cls)
     
     assert len(items) > 0, f"Spider {spider_cls.name} collected no items from {spider_cls.start_urls}"
     
-    # Check item structure for the first collected item
-    item = items[0]
-    print(f"\n[DEBUG] Collected item from {spider_cls.name}:")
-    print(json.dumps(item, indent=2))
+    print(f"\n[DEBUG] Collected {len(items)} items from {spider_cls.name}:")
+    for idx, item in enumerate(items, 1):
+        print(f"\n--- Item {idx} ---")
+        print(json.dumps(item, indent=2))
     
-    assert "source_org" in item
-    assert "source_url" in item
-    assert "title" in item
-    assert len(item["title"]) > 0
-    assert item["collected_at"] is not None
+    for item in items:
+        assert "source_org" in item
+        assert "source_url" in item
+        assert "title" in item
+        assert len(item["title"]) > 0
+        assert item["collected_at"] is not None
