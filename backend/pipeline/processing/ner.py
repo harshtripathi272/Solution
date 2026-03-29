@@ -80,7 +80,7 @@ Text:
 class NERExtractor:
     """Singleton NER service backed by Gemini Flash."""
 
-    _MODEL_NAME = "gemini-1.5-flash"
+    _MODEL_NAME = "gemini-2.0-flash"
     _MAX_TEXT_LEN = 1500   # truncate long articles to keep latency low
 
     def __init__(self) -> None:

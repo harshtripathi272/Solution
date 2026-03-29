@@ -13,6 +13,9 @@ Collection: need_regions/{geohash}
     last_updated         timestamp
     dominant_need        str
     max_severity         str
+    latest_event_id      str
+    latest_event_source  str
+    latest_text_preview  str   ← first ~100 chars from incoming stream text
 
   Subcollection: need_regions/{geohash}/events/{event_id}
     (append-only time-series log, one doc per event)
@@ -47,6 +50,15 @@ if TYPE_CHECKING:
     from pipeline.core.schemas import UnifiedIngestionEvent
 
 logger = logging.getLogger(__name__)
+
+
+def _preview_text(event: "UnifiedIngestionEvent", limit: int = 100) -> str:
+    """Compact preview of incoming text for quick pipeline observability."""
+    raw = (event.description or "").strip()
+    if not raw:
+        raw = str((event.metadata or {}).get("description", "")).strip()
+    compact = " ".join(raw.split())
+    return compact[:limit]
 
 
 class FirestoreStore:
@@ -101,6 +113,9 @@ class FirestoreStore:
             f"need_scores.{event.need_type}": score,
             "dominant_need": event.need_type,
             "max_severity": event.severity,
+            "latest_event_id": event.id,
+            "latest_event_source": event.source,
+            "latest_text_preview": _preview_text(event, limit=100),
             # Increment event count atomically
             "event_count": self._firestore.Increment(1),
         }

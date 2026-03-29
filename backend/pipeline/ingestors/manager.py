@@ -8,6 +8,7 @@ from pipeline.core.schemas import UnifiedIngestionEvent
 from .gdacs import GDACSIngestor
 from .ndma_rss import NDMARSSIngestor
 from .news_api import IndiaNewsIngestor
+from .ngo_reports import NGOReportsIngestor
 from .openweather import OpenWeatherIngestor
 from .osm_overpass import OverpassEnricher
 from .survey_loader import SurveyDataLoader
@@ -21,7 +22,12 @@ class IngestionManager:
     def __init__(self):
         self._tasks: list[asyncio.Task] = []
         self._enrich_osm = os.getenv("INGEST_ENRICH_OSM", "false").lower() == "true"
+        self._enable_ngo = os.getenv("INGEST_NGO_ENABLED", "true").lower() == "true"
         self._enricher = OverpassEnricher() if self._enrich_osm else None
+        self._ngo_ingestor = NGOReportsIngestor(
+            interval_seconds=int(os.getenv("INGEST_NGO_INTERVAL", "21600")),  # 6 hours (prototype-safe)
+            max_reports=int(os.getenv("INGEST_NGO_MAX_REPORTS", "80")),
+        )
 
         self._ingestors = [
             GDACSIngestor(interval_seconds=int(os.getenv("INGEST_GDACS_INTERVAL", "600"))),
@@ -39,6 +45,9 @@ class IngestionManager:
                 interval_seconds=int(os.getenv("INGEST_NEWS_INTERVAL", "420")),
             ),
         ]
+        if self._enable_ngo:
+            self._ingestors.append(self._ngo_ingestor)
+
         self._survey_loader = SurveyDataLoader()
 
     def start(self):
@@ -77,6 +86,17 @@ class IngestionManager:
             await broker.publish("ingestion-normalized", event)
 
         logger.info("[IngestionManager] On-demand survey ingestion published %d events", len(events))
+        return len(events)
+
+    async def ingest_ngo_reports_once(self, max_reports: int | None = None) -> int:
+        events = await self._ngo_ingestor.fetch_events(max_reports=max_reports)
+        if self._enricher:
+            events = await self._enrich_events(events)
+
+        for event in events:
+            await broker.publish("ingestion-normalized", event)
+
+        logger.info("[IngestionManager] On-demand NGO reports ingestion published %d events", len(events))
         return len(events)
 
     async def _enrich_events(self, events: list[UnifiedIngestionEvent]) -> list[UnifiedIngestionEvent]:

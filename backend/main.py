@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict
 from datetime import datetime, timezone, timedelta
@@ -39,6 +39,15 @@ class ProfileUpdate(BaseModel):
 
 class SurveyIngestRequest(BaseModel):
     file_path: str
+
+
+class NGOReportsIngestRequest(BaseModel):
+    max_reports: int | None = None
+
+
+class ChangeDetectionWebhookRequest(BaseModel):
+    source: str | None = None
+    changed_url: str | None = None
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
@@ -201,6 +210,49 @@ async def ingest_survey_data(
     except Exception as exc:
         logger.error("Survey ingestion failed: %s", exc)
         raise HTTPException(status_code=500, detail="Survey ingestion failed")
+
+
+@app.post("/api/v1/ingestion/ngo-reports")
+async def ingest_ngo_reports(
+    payload: NGOReportsIngestRequest,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
+):
+    """On-demand scrape of NGO publication pages (prototype mode)."""
+    try:
+        count = await ingestion_manager.ingest_ngo_reports_once(max_reports=payload.max_reports)
+        return {
+            "status": "ok",
+            "ingested": count,
+            "max_reports": payload.max_reports,
+            "requested_by": current_user.uid,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("NGO reports ingestion failed: %s", exc)
+        raise HTTPException(status_code=500, detail="NGO reports ingestion failed")
+
+
+@app.post("/api/v1/webhooks/changedetection/ngo")
+async def changedetection_ngo_webhook(
+    payload: ChangeDetectionWebhookRequest,
+    x_webhook_token: str | None = Header(default=None),
+):
+    """Webhook target for changedetection.io to trigger immediate NGO scrape."""
+    expected_token = os.getenv("CHANGEDETECTION_WEBHOOK_TOKEN", "").strip()
+    if expected_token:
+        provided = (x_webhook_token or "").strip()
+        if provided != expected_token:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook token")
+
+    max_reports = int(os.getenv("INGEST_NGO_WEBHOOK_MAX_REPORTS", "30"))
+    count = await ingestion_manager.ingest_ngo_reports_once(max_reports=max_reports)
+    return {
+        "status": "ok",
+        "ingested": count,
+        "source": payload.source,
+        "changed_url": payload.changed_url,
+    }
 
 @app.put("/api/v1/profile/update")
 def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(get_current_user_token)):

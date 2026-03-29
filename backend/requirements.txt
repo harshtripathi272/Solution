@@ -24,3 +24,10 @@ protobuf==4.25.3
 
 pytest
 pytest-asyncio
+
+scrapy==2.11.2
+scrapy-playwright==0.0.36
+playwright==1.52.0
+beautifulsoup4==4.12.3
+newspaper3k==0.2.8
+lxml_html_clean==0.4.3
