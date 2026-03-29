@@ -4,6 +4,8 @@ from .ngo_sites import (
     PradanReportsSpider,
     SphereIndiaReportsSpider,
     SewaBharatReportsSpider,
+    NFIReportsSpider,
+    VHAIReportsSpider,
 )
 
 __all__ = [
@@ -12,4 +14,6 @@ __all__ = [
     "PradanReportsSpider",
     "SphereIndiaReportsSpider",
     "SewaBharatReportsSpider",
+    "NFIReportsSpider",
+    "VHAIReportsSpider",
 ]

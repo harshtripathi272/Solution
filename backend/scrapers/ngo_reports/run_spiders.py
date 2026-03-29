@@ -11,6 +11,8 @@ from scrapers.ngo_reports.spiders import (
     PradanReportsSpider,
     SphereIndiaReportsSpider,
     SewaBharatReportsSpider,
+    NFIReportsSpider,
+    VHAIReportsSpider,
 )
 
 
@@ -53,6 +55,8 @@ def main() -> None:
         PradanReportsSpider,
         SphereIndiaReportsSpider,
         SewaBharatReportsSpider,
+        NFIReportsSpider,
+        VHAIReportsSpider,
     ]
     for spider_cls in spiders:
         process.crawl(spider_cls, max_pages=args.max_pages)

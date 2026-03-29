@@ -169,28 +169,55 @@ class BaseNGOReportsSpider(scrapy.Spider):
 class OxfamIndiaReportsSpider(BaseNGOReportsSpider):
     name = "oxfam_india_reports"
     source_org = "Oxfam India"
-    start_urls = ["https://www.oxfamindia.org/research-publications"]
+    start_urls = ["https://www.oxfamindia.org/research-white-papers"]
 
 
 class ActionAidIndiaReportsSpider(BaseNGOReportsSpider):
     name = "actionaid_india_reports"
     source_org = "ActionAid India"
-    start_urls = ["https://actionaidindia.org/our-work/reports"]
+    # User suggested state-filtered URLs for better targeting
+    start_urls = [
+        "https://www.actionaidindia.org/publications/?title=UP&theme=&year_action=",
+        "https://www.actionaidindia.org/publications/?title=Bihar&theme=&year_action=",
+        "https://www.actionaidindia.org/publications/?title=Assam&theme=&year_action=",
+    ]
+
+    def _extract_candidate_links(self, response: scrapy.http.Response) -> list[str]:
+        # Specific selector for ActionAid PDF links as identified by the user
+        links = response.css("a.text-uppercase::attr(href)").getall()
+        # Fallback to base logic if specific class is missing
+        if not links:
+            links = super()._extract_candidate_links(response)
+        
+        abs_links = [urljoin(response.url, l) for l in links if l]
+        return list(dict.fromkeys(abs_links))
 
 
 class PradanReportsSpider(BaseNGOReportsSpider):
     name = "pradan_reports"
     source_org = "PRADAN"
-    start_urls = ["https://pradan.net/publications"]
+    start_urls = ["https://www.pradan.net/ideas/#ourfieldwork"]
 
 
 class SphereIndiaReportsSpider(BaseNGOReportsSpider):
     name = "sphere_india_reports"
     source_org = "Sphere India"
-    start_urls = ["https://sphereindia.org.in/reports"]
+    start_urls = ["https://www.sphereindia.org.in/situation-reports/"]
 
 
 class SewaBharatReportsSpider(BaseNGOReportsSpider):
     name = "sewa_bharat_reports"
     source_org = "SEWA Bharat"
-    start_urls = ["https://sewabharat.org/research"]
+    start_urls = ["https://sewabharat.org/research/"]
+
+
+class NFIReportsSpider(BaseNGOReportsSpider):
+    name = "nfi_reports"
+    source_org = "National Foundation for India"
+    start_urls = ["https://nfi.org.in/publications"]
+
+
+class VHAIReportsSpider(BaseNGOReportsSpider):
+    name = "vhai_reports"
+    source_org = "Voluntary Health Association of India"
+    start_urls = ["https://vhai.org/publications.html"]
