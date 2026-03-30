@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -51,21 +52,21 @@ class NGOReportsIngestor(PeriodicIngestor):
         ]
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
+            completed = await asyncio.to_thread(
+                subprocess.run,
+                cmd,
                 cwd=str(backend_root),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                capture_output=True,
+                text=True,
             )
-            _, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                logger.error("[NGOReports] Scrapy run failed: %s", stderr.decode("utf-8", errors="ignore"))
+            if completed.returncode != 0:
+                logger.error("[NGOReports] Scrapy run failed: %s", completed.stderr)
                 return []
 
             records: list[dict] = []
             if output_path.exists():
                 for line in output_path.read_text(encoding="utf-8").splitlines():
-                    line = line.strip()
+                    line = line.lstrip("\ufeff").strip()
                     if not line:
                         continue
                     try:

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
 from pipeline.core.pubsub import TOPIC_DOCUMENT_INTELLIGENCE_RAW, TOPIC_INGESTION_NORMALIZED, broker
 from pipeline.core.schemas import DocumentMetadata, IngestionLocation, NeedTemporality, UnifiedIngestionEvent
-from pipeline.processing.document_extractor import DocumentDownloadError, document_extractor
-from pipeline.processing.ner import document_ner_adapter
+from pipeline.processing.unified_extractor import DocumentDownloadError, nvidia_extractor
 from pipeline.storage import firestore_store
 
 logger = logging.getLogger(__name__)
@@ -35,11 +36,18 @@ class DocumentStreamOrchestrator:
             return
 
         try:
-            extraction = await document_extractor.extract_from_pdf_url(
+            start = time.perf_counter()
+            logger.info("[DocumentStream] Starting extraction for %s", pdf_url)
+            extraction = await nvidia_extractor.extract_from_pdf_url(
                 pdf_url=pdf_url,
                 source_org=source_org,
                 publication_date_hint=published_on,
                 text_hint=snippet,
+            )
+            logger.info(
+                "[DocumentStream] Extraction finished for %s in %.2fs",
+                pdf_url,
+                time.perf_counter() - start,
             )
             if extraction is None:
                 logger.warning("[DocumentStream] Extraction returned no result for %s", pdf_url)
@@ -97,16 +105,18 @@ class DocumentStreamOrchestrator:
 
     @staticmethod
     def _to_unified_event(source_org: str, pdf_url: str, published_on: str, snippet: str, extraction) -> UnifiedIngestionEvent:
+        """Convert UnifiedExtractionResult to UnifiedIngestionEvent for main pipeline."""
         ts = extraction.publication_date or datetime.now(timezone.utc)
-        adapter_result = document_ner_adapter.adapt(extraction.raw_json)
-        need_type = adapter_result.need_type
-        severity = adapter_result.severity
+        
+        # Extraction fields are already normalized in UnifiedExtractionResult
+        need_type = extraction.need_type
+        severity = extraction.severity
+        confidence = extraction.confidence
 
         # Start at India centroid until standard geocoding stage resolves extracted places.
         location = IngestionLocation(latitude=20.5937, longitude=78.9629)
 
         stable_seed = f"{source_org}|{pdf_url}|{extraction.document_sha256[:16]}"
-        import hashlib
         event_id = f"DOC-{hashlib.sha256(stable_seed.encode('utf-8')).hexdigest()[:24]}"
 
         metadata = {
@@ -115,7 +125,7 @@ class DocumentStreamOrchestrator:
             "published_on": published_on,
             "snippet": snippet[:400],
             "source_excerpt": extraction.source_excerpt,
-            "places": adapter_result.places or extraction.places,
+            "places": extraction.places,
             "recommended_interventions": extraction.interventions,
             "vulnerable_groups": extraction.vulnerable_groups,
             "infrastructure_gaps": extraction.infrastructure_gaps,
@@ -134,8 +144,8 @@ class DocumentStreamOrchestrator:
             severity=severity,
             timestamp=ts,
             source=f"DOC_{source_org.upper().replace(' ', '_')}",
-            need_temporality=adapter_result.need_temporality,
-            confidence_score=max(0.0, min(adapter_result.confidence, 1.0)),
+            need_temporality=NeedTemporality.CHRONIC,
+            confidence_score=max(0.0, min(confidence, 1.0)),
             description=(extraction.source_excerpt or snippet or f"{source_org} report")[:500],
             metadata=metadata,
             population_affected=max(0, extraction.population_affected),

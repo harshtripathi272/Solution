@@ -13,7 +13,7 @@ TOPIC_VERIFIED_CRISIS = "verified-crisis"
 TOPIC_DOCUMENT_INTELLIGENCE_RAW = "document-intelligence-raw"
 
 class Subscription:
-    def __init__(self, name: str, callback: Callable[[CrisisEvent], Any]):
+    def __init__(self, name: str, callback: Callable[[Any], Any]):
         self.name = name
         self.callback = callback
         self.queue: asyncio.Queue = asyncio.Queue()
@@ -21,18 +21,27 @@ class Subscription:
 
     async def _worker(self):
         logger.info(f"Subscriber {self.name} listening...")
+        # Concurrent processing limit to prevent overwhelming downstream services
+        semaphore = asyncio.Semaphore(10)
+
+        async def _run_callback(msg):
+            async with semaphore:
+                try:
+                    await self.callback(msg)
+                except Exception as e:
+                    logger.error(f"Error in subscriber {self.name} callback: {str(e)}")
+                finally:
+                    self.queue.task_done()
+
         while True:
-            msg = None
             try:
                 msg = await self.queue.get()
                 if msg is None:  # Shutdown signal
                     break
-                await self.callback(msg)
+                # Spawn concurrent task
+                asyncio.create_task(_run_callback(msg))
             except Exception as e:
-                logger.error(f"Error in subscriber {self.name}: {str(e)}")
-            finally:
-                if msg is not None:
-                    self.queue.task_done()
+                logger.error(f"Error in subscriber {self.name} loop: {str(e)}")
 
     def start(self):
         self._task = asyncio.create_task(self._worker())

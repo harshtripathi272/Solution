@@ -35,20 +35,20 @@ class IngestionManager:
         )
 
         self._ingestors = [
-            GDACSIngestor(interval_seconds=int(os.getenv("INGEST_GDACS_INTERVAL", "600"))),
-            NDMARSSIngestor(
-                feed_url=os.getenv("INGEST_NDMA_RSS_URL", "https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml"),
-                interval_seconds=int(os.getenv("INGEST_NDMA_INTERVAL", "300")),
-            ),
-            OpenWeatherIngestor(
-                api_key=os.getenv("OPENWEATHER_API_KEY", ""),
-                interval_seconds=int(os.getenv("INGEST_WEATHER_INTERVAL", "420")),
-            ),
-            IndiaNewsIngestor(
-                news_api_key=os.getenv("NEWS_API_KEY", ""),
-                newsdata_api_key=os.getenv("NEWS_DATA_API_KEY", ""),
-                interval_seconds=int(os.getenv("INGEST_NEWS_INTERVAL", "420")),
-            ),
+            GDACSIngestor(interval_seconds=int(os.getenv("INGEST_GDACS_INTERVAL", "60"))),
+            # NDMARSSIngestor(
+            #     feed_url=os.getenv("INGEST_NDMA_RSS_URL", "https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml"),
+            #     interval_seconds=int(os.getenv("INGEST_NDMA_INTERVAL", "300")),
+            # ),
+            # OpenWeatherIngestor(
+            #     api_key=os.getenv("OPENWEATHER_API_KEY", ""),
+            #     interval_seconds=int(os.getenv("INGEST_WEATHER_INTERVAL", "420")),
+            # ),
+            # IndiaNewsIngestor(
+            #     news_api_key=os.getenv("NEWS_API_KEY", ""),
+            #     newsdata_api_key=os.getenv("NEWS_DATA_API_KEY", ""),
+            #     interval_seconds=int(os.getenv("INGEST_NEWS_INTERVAL", "420")),
+            # ),
         ]
         if self._enable_ngo:
             self._ingestors.append(self._ngo_ingestor)

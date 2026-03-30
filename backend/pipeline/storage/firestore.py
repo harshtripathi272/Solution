@@ -112,7 +112,17 @@ class FirestoreStore:
         Creates the document if it doesn't exist (set with merge=True).
         """
         db = self._get_db()
-        if not db or not event.geohash:
+        if not db:
+            logger.warning(
+                "[FirestoreStore] Skipping upsert_region for %s: Firestore client not ready",
+                event.id,
+            )
+            return
+        if not event.geohash:
+            logger.warning(
+                "[FirestoreStore] Skipping upsert_region for %s: missing geohash",
+                event.id,
+            )
             return
 
         doc_ref = db.collection(self._COLLECTION).document(event.geohash)
@@ -137,7 +147,11 @@ class FirestoreStore:
                 None,
                 lambda: doc_ref.set(update_data, merge=True),
             )
-            logger.debug("[FirestoreStore] Upserted region doc: %s", event.geohash)
+            logger.info(
+                "[FirestoreStore] Upserted need_regions/%s from event %s",
+                event.geohash,
+                event.id,
+            )
         except Exception as exc:
             logger.error("[FirestoreStore] upsert_region failed for %s: %s", event.geohash, exc)
 
@@ -147,7 +161,17 @@ class FirestoreStore:
         Document ID = event.id ensures idempotency on re-processing.
         """
         db = self._get_db()
-        if not db or not event.geohash:
+        if not db:
+            logger.warning(
+                "[FirestoreStore] Skipping append_event for %s: Firestore client not ready",
+                event.id,
+            )
+            return
+        if not event.geohash:
+            logger.warning(
+                "[FirestoreStore] Skipping append_event for %s: missing geohash",
+                event.id,
+            )
             return
 
         sub_ref = (
@@ -177,7 +201,11 @@ class FirestoreStore:
                 None,
                 lambda: sub_ref.set(entry),
             )
-            logger.debug("[FirestoreStore] Appended event %s → region %s", event.id, event.geohash)
+            logger.info(
+                "[FirestoreStore] Appended need_regions/%s/events/%s",
+                event.geohash,
+                event.id,
+            )
         except Exception as exc:
             logger.error("[FirestoreStore] append_event failed for %s: %s", event.id, exc)
 

@@ -74,11 +74,18 @@ class UnifiedPipeline:
     # Main processing handler
     # ------------------------------------------------------------------
     async def _process(self, event: UnifiedIngestionEvent) -> None:
-        logger.debug("[UnifiedPipeline] Processing event %s from %s", event.id, event.source)
+        logger.info("[UnifiedPipeline] Processing event %s from %s", event.id, event.source)
 
-        # Step 1 — NER (unstructured sources only)
+        # Step 1 — NER (unstructured sources / needs refinement only)
         ner_places: list[str] = []
-        if event.needs_geocoding:
+        is_official = _infer_source_tier(event.source) == 1
+        has_coords = abs(event.location.latitude) > 0.1 or abs(event.location.longitude) > 0.1
+        
+        # Optimization: Skip NER for official alerts that already have valid coordinates
+        # and don't explicitly need geocoding refinement.
+        should_run_ner = event.needs_geocoding and (not is_official or not has_coords)
+
+        if should_run_ner:
             ner_result = await ner_extractor.extract(event.description)
             if ner_result:
                 ner_places = ner_result.places or []
@@ -87,6 +94,9 @@ class UnifiedPipeline:
                     event = event.model_copy(update={"need_type": ner_result.need_type})
                 if ner_result.severity and ner_result.confidence >= event.confidence_score:
                     event = event.model_copy(update={"severity": ner_result.severity})
+        else:
+            if event.needs_geocoding:
+                logger.debug("[UnifiedPipeline] Skipping NER for %s (Tier 1 + has coords)", event.id)
 
         # Step 2 — Geocoding
         geo_result = None
@@ -163,10 +173,20 @@ class UnifiedPipeline:
         if event.document_metadata is not None:
             storage_tasks.append(bigquery_store.append_document_event(event, merged_score))
 
-        await asyncio.gather(
+        results = await asyncio.gather(
             *storage_tasks,
             return_exceptions=True,   # never let one store failure cancel others
         )
+        for idx, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(
+                    "[UnifiedPipeline] Storage task %d failed for %s: %s",
+                    idx,
+                    event.id,
+                    result,
+                )
+
+        logger.info("[UnifiedPipeline] Storage fan-out completed for %s", event.id)
 
         # Redis cache is synchronous-friendly, call after gather
         redis_need_cache.set(event.geohash, event.need_type, merged_score)
@@ -188,9 +208,9 @@ class UnifiedPipeline:
         )
 
         await broker.publish(downstream_topic, crisis_event)
-        logger.debug("[UnifiedPipeline] Re-published enriched event %s to %s", event.id, downstream_topic)
+        logger.info("[UnifiedPipeline] Re-published enriched event %s to %s", event.id, downstream_topic)
 
-        logger.debug("[UnifiedPipeline] Done — event %s stored and re-published.", event.id)
+        logger.info("[UnifiedPipeline] Done — event %s stored and re-published.", event.id)
 
 
 # Global singleton — started in main.py lifespan
