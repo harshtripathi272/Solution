@@ -53,17 +53,20 @@ class BaseNGOReportsSpider(scrapy.Spider):
     def parse_listing(self, response: scrapy.http.Response):
         links = self._extract_candidate_links(response)
         for link in links:
-            if self._enqueued >= self.max_pages:
-                break
             if link in self._seen_urls:
                 continue
-            self._seen_urls.add(link)
-            self._enqueued += 1
+            
+            if self._enqueued >= self.max_pages:
+                break
 
             if link.lower().endswith(".pdf"):
+                self._enqueued += 1
+                self._seen_urls.add(link)
                 yield self._build_item(response, link, is_pdf=True)
                 continue
 
+            self._enqueued += 1
+            self._seen_urls.add(link)
             yield scrapy.Request(
                 link,
                 callback=self.parse_report_page,
@@ -226,4 +229,13 @@ class NFIReportsSpider(BaseNGOReportsSpider):
 class VHAIReportsSpider(BaseNGOReportsSpider):
     name = "vhai_reports"
     source_org = "Voluntary Health Association of India"
-    start_urls = ["https://vhai.org/publications.html"]
+    start_urls = ["https://vhai.org/publications/publications-recent/"]
+
+    def _extract_candidate_links(self, response: scrapy.http.Response) -> list[str]:
+        # User identified specific class '_self' for navigation to PDF pages
+        links = response.css("a._self::attr(href)").getall()
+        if not links:
+            links = super()._extract_candidate_links(response)
+        
+        abs_links = [urljoin(response.url, l) for l in links if l]
+        return list(dict.fromkeys(abs_links))

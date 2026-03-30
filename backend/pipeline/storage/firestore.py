@@ -37,6 +37,17 @@ Usage
   await firestore_store.upsert_region(event, score)  ← update top-level stats
   await firestore_store.append_event(event, score)   ← write time-series entry
   Both calls are idempotent (Firestore merge-set and doc-set with event.id).
+
+Collection: document_registry/{sha256_hash}
+    Fields:
+        source_ngo            str
+        pdf_url               str
+        publication_date      timestamp | null
+        first_seen_at         timestamp
+        last_seen_at          timestamp
+        status                str (processed | failed | unreachable)
+        failure_reason        str | null
+        extraction_version    int
 """
 
 from __future__ import annotations
@@ -47,7 +58,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pipeline.core.schemas import UnifiedIngestionEvent
+    from pipeline.core.schemas import UnifiedIngestionEvent, DocumentMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +76,7 @@ class FirestoreStore:
     """Dual-write Firestore storage using the existing firebase_admin SDK."""
 
     _COLLECTION = "need_regions"
+    _DOCUMENT_REGISTRY_COLLECTION = "document_registry"
 
     def __init__(self) -> None:
         self._db = None
@@ -183,6 +195,60 @@ class FirestoreStore:
         except Exception as exc:
             logger.error("[FirestoreStore] get_region failed for %s: %s", geohash, exc)
             return None
+
+    async def is_document_hash_processed(self, sha256_hash: str) -> bool:
+        """Check whether a document hash is already present in the registry."""
+        db = self._get_db()
+        if not db or not sha256_hash:
+            return False
+        try:
+            doc = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.collection(self._DOCUMENT_REGISTRY_COLLECTION).document(sha256_hash).get(),
+            )
+            return bool(doc.exists)
+        except Exception as exc:
+            logger.error("[FirestoreStore] is_document_hash_processed failed for %s: %s", sha256_hash, exc)
+            return False
+
+    async def upsert_document_registry(
+        self,
+        metadata: "DocumentMetadata",
+        status: str = "processed",
+        failure_reason: str | None = None,
+        extraction_version: int = 1,
+    ) -> None:
+        """Register or update a document hash entry for dedup and incremental refresh."""
+        db = self._get_db()
+        if not db or not metadata.sha256_hash:
+            return
+
+        now = datetime.now(timezone.utc)
+        doc_ref = db.collection(self._DOCUMENT_REGISTRY_COLLECTION).document(metadata.sha256_hash)
+        payload = {
+            "source_ngo": metadata.source_ngo,
+            "pdf_url": metadata.pdf_url,
+            "publication_date": metadata.publication_date,
+            "last_seen_at": now,
+            "status": status,
+            "failure_reason": failure_reason,
+            "extraction_version": extraction_version,
+        }
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: doc_ref.set(
+                    {
+                        **payload,
+                        "first_seen_at": self._firestore.SERVER_TIMESTAMP,
+                    },
+                    merge=True,
+                ),
+            )
+            logger.debug("[FirestoreStore] Upserted document_registry for %s", metadata.sha256_hash)
+        except Exception as exc:
+            logger.error("[FirestoreStore] upsert_document_registry failed for %s: %s", metadata.sha256_hash, exc)
 
 
 # Global singleton

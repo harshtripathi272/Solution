@@ -5,6 +5,13 @@ from .schemas import CrisisEvent
 
 logger = logging.getLogger(__name__)
 
+TOPIC_INGESTION_NORMALIZED = "ingestion-normalized"
+TOPIC_OFFICIAL_ALERTS = "official-alerts"
+TOPIC_CITIZEN_REPORTS = "citizen-reports"
+TOPIC_SOCIAL_MEDIA_RAW = "social-media-raw"
+TOPIC_VERIFIED_CRISIS = "verified-crisis"
+TOPIC_DOCUMENT_INTELLIGENCE_RAW = "document-intelligence-raw"
+
 class Subscription:
     def __init__(self, name: str, callback: Callable[[CrisisEvent], Any]):
         self.name = name
@@ -72,3 +79,14 @@ class PubSubBroker:
 
 # Global singleton broker for the application
 broker = PubSubBroker()
+
+# Pre-create known topics so publishers/subscribers can rely on stable names.
+for _topic in (
+    TOPIC_INGESTION_NORMALIZED,
+    TOPIC_OFFICIAL_ALERTS,
+    TOPIC_CITIZEN_REPORTS,
+    TOPIC_SOCIAL_MEDIA_RAW,
+    TOPIC_VERIFIED_CRISIS,
+    TOPIC_DOCUMENT_INTELLIGENCE_RAW,
+):
+    broker.create_topic(_topic)

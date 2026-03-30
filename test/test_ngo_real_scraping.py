@@ -44,7 +44,7 @@ def run_spider_to_file(tmp_path):
         }
         
         process = CrawlerProcess(settings)
-        process.crawl(spider_cls, max_pages=5) # More than 1 to catch all links on the page
+        process.crawl(spider_cls, max_pages=10) # Enough to catch all links on listing pages
         process.start()
         
         items = []
@@ -58,12 +58,12 @@ def run_spider_to_file(tmp_path):
 
 @pytest.mark.parametrize("spider_cls", [
     # OxfamIndiaReportsSpider,
-    ActionAidIndiaReportsSpider,
+    # ActionAidIndiaReportsSpider,
     # PradanReportsSpider,
     # SphereIndiaReportsSpider,
     # SewaBharatReportsSpider,
     #NFIReportsSpider,
-    #VHAIReportsSpider,
+    VHAIReportsSpider,
 ])
 def test_ngo_spider_real_connectivity(spider_cls, run_spider_to_file): 
     """

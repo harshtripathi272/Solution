@@ -8,6 +8,7 @@ from pipeline.core.schemas import UnifiedIngestionEvent
 from .gdacs import GDACSIngestor
 from .ndma_rss import NDMARSSIngestor
 from .news_api import IndiaNewsIngestor
+from .document_ingestion_service import document_ingestion_service
 from .ngo_reports import NGOReportsIngestor
 from .openweather import OpenWeatherIngestor
 from .osm_overpass import OverpassEnricher
@@ -23,6 +24,10 @@ class IngestionManager:
         self._tasks: list[asyncio.Task] = []
         self._enrich_osm = os.getenv("INGEST_ENRICH_OSM", "false").lower() == "true"
         self._enable_ngo = os.getenv("INGEST_NGO_ENABLED", "true").lower() == "true"
+        self._enable_document_stream = os.getenv("INGEST_DOCUMENT_STREAM_ENABLED", "false").lower() == "true"
+        self._document_interval = int(os.getenv("INGEST_DOCUMENT_INTERVAL", "21600"))
+        self._document_jsonl_path = os.getenv("INGEST_DOCUMENT_JSONL_PATH", "")
+        self._document_max_per_cycle = int(os.getenv("INGEST_DOCUMENT_MAX_PER_CYCLE", "40"))
         self._enricher = OverpassEnricher() if self._enrich_osm else None
         self._ngo_ingestor = NGOReportsIngestor(
             interval_seconds=int(os.getenv("INGEST_NGO_INTERVAL", "21600")),  # 6 hours (prototype-safe)
@@ -53,6 +58,10 @@ class IngestionManager:
     def start(self):
         for ingestor in self._ingestors:
             self._tasks.append(asyncio.create_task(self._run_worker(ingestor)))
+
+        if self._enable_document_stream and self._document_jsonl_path:
+            self._tasks.append(asyncio.create_task(self._run_document_worker()))
+
         logger.info("[IngestionManager] Started %d ingestion workers", len(self._tasks))
 
     async def stop(self):
@@ -98,6 +107,31 @@ class IngestionManager:
 
         logger.info("[IngestionManager] On-demand NGO reports ingestion published %d events", len(events))
         return len(events)
+
+    async def ingest_document_jsonl_once(self, file_path: str, max_documents: int | None = None) -> int:
+        if max_documents is not None and max_documents <= 0:
+            raise ValueError("max_documents must be positive when provided")
+
+        return await document_ingestion_service.ingest_jsonl(
+            file_path=file_path,
+            max_documents=max_documents,
+        )
+
+    async def _run_document_worker(self):
+        while True:
+            try:
+                await self.ingest_document_jsonl_once(
+                    file_path=self._document_jsonl_path,
+                    max_documents=self._document_max_per_cycle,
+                )
+            except FileNotFoundError:
+                logger.warning("[DocumentWorker] JSONL path not found: %s", self._document_jsonl_path)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.exception("[DocumentWorker] iteration failed: %s", exc)
+
+            await asyncio.sleep(self._document_interval)
 
     async def _enrich_events(self, events: list[UnifiedIngestionEvent]) -> list[UnifiedIngestionEvent]:
         if not self._enricher:

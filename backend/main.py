@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 # Pipeline Imports
 from pipeline.orchestrators.validation import validation_service
 from pipeline.orchestrators.allocation import allocation_engine
+from pipeline.orchestrators.document_stream import document_stream_orchestrator
 from pipeline.ingestors.manager import ingestion_manager
 from pipeline.storage.location import location_store
 from pipeline.orchestrators.unified import unified_pipeline
@@ -49,6 +50,11 @@ class ChangeDetectionWebhookRequest(BaseModel):
     source: str | None = None
     changed_url: str | None = None
 
+
+class DocumentJsonlIngestRequest(BaseModel):
+    file_path: str
+    max_documents: int | None = None
+
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -58,6 +64,7 @@ async def lifespan(app: FastAPI):
     logger.info("---| Booting SevaSetu Crisis Intelligence Pipeline |---")
     validation_service.start()
     allocation_engine.start()
+    document_stream_orchestrator.start()
     unified_pipeline.start()        # data unification + persistent storage
     ingestion_manager.start()
     yield
@@ -253,6 +260,33 @@ async def changedetection_ngo_webhook(
         "source": payload.source,
         "changed_url": payload.changed_url,
     }
+
+
+@app.post("/api/v1/ingestion/documents/jsonl")
+async def ingest_documents_from_jsonl(
+    payload: DocumentJsonlIngestRequest,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
+):
+    """On-demand document-intelligence enqueue from Scrapy JSONL output."""
+    try:
+        count = await ingestion_manager.ingest_document_jsonl_once(
+            file_path=payload.file_path,
+            max_documents=payload.max_documents,
+        )
+        return {
+            "status": "ok",
+            "enqueued": count,
+            "file_path": payload.file_path,
+            "max_documents": payload.max_documents,
+            "requested_by": current_user.uid,
+        }
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("Document JSONL ingestion failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Document JSONL ingestion failed")
 
 @app.put("/api/v1/profile/update")
 def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(get_current_user_token)):

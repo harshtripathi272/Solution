@@ -155,10 +155,16 @@ class UnifiedPipeline:
         )
 
         import asyncio
-        await asyncio.gather(
+        storage_tasks = [
             firestore_store.upsert_region(event, merged_score),
             firestore_store.append_event(event, merged_score),
             bigquery_store.append(event, merged_score),
+        ]
+        if event.document_metadata is not None:
+            storage_tasks.append(bigquery_store.append_document_event(event, merged_score))
+
+        await asyncio.gather(
+            *storage_tasks,
             return_exceptions=True,   # never let one store failure cancel others
         )
 

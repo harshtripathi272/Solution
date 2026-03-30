@@ -23,6 +23,8 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from pipeline.core.schemas import NeedTemporality
+
 logger = logging.getLogger(__name__)
 
 # Optional dependency guard
@@ -46,6 +48,15 @@ class NERResult:
     severity: Optional[str] = None
     # Confidence in the extraction (0.0–1.0)
     confidence: float = 0.5
+
+
+@dataclass
+class DocumentNERAdapterResult:
+    places: List[str] = field(default_factory=list)
+    need_type: str = "other"
+    severity: str = "moderate"
+    confidence: float = 0.5
+    need_temporality: NeedTemporality = NeedTemporality.CHRONIC
 
 
 # Prompt template
@@ -157,5 +168,81 @@ class NERExtractor:
         )
 
 
+class DocumentNERAdapter:
+    """Maps document-extracted entities to the same shape expected by unified pipeline."""
+
+    _NEED_MAP = {
+        "wash": "water_sanitation",
+        "water": "water_sanitation",
+        "sanitation": "water_sanitation",
+        "health": "medical",
+        "medicine": "medical",
+        "food": "food",
+        "nutrition": "food",
+        "shelter": "shelter",
+        "education": "education",
+        "protection": "protection",
+        "livelihood": "livelihood",
+    }
+
+    def adapt(self, payload: dict) -> DocumentNERAdapterResult:
+        places = payload.get("places") or payload.get("locations") or []
+        if isinstance(places, str):
+            places = [places]
+        if not isinstance(places, list):
+            places = []
+
+        need_type = self._normalize_need_type(str(payload.get("need_type", "other")))
+
+        severity = self._normalize_severity(
+            raw_label=str(payload.get("severity", "")),
+            raw_score=payload.get("severity_score"),
+        )
+
+        confidence = self._safe_float(payload.get("confidence"), default=0.5)
+
+        return DocumentNERAdapterResult(
+            places=[str(p).strip() for p in places if str(p).strip()],
+            need_type=need_type,
+            severity=severity,
+            confidence=max(0.0, min(confidence, 1.0)),
+            need_temporality=NeedTemporality.CHRONIC,
+        )
+
+    def _normalize_need_type(self, value: str) -> str:
+        low = value.strip().lower()
+        if low in {"medical", "water_sanitation", "food", "shelter", "education", "protection", "livelihood", "other"}:
+            return low
+        for key, mapped in self._NEED_MAP.items():
+            if key in low:
+                return mapped
+        return "other"
+
+    @staticmethod
+    def _normalize_severity(raw_label: str, raw_score) -> str:
+        score = DocumentNERAdapter._safe_float(raw_score, default=-1)
+        if score >= 8:
+            return "critical"
+        if score >= 6:
+            return "high"
+        if score >= 3:
+            return "moderate"
+        if score >= 0:
+            return "low"
+
+        label = raw_label.strip().lower()
+        if label in {"critical", "high", "moderate", "low"}:
+            return label
+        return "moderate"
+
+    @staticmethod
+    def _safe_float(value, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except Exception:
+            return default
+
+
 # Global singleton
 ner_extractor = NERExtractor()
+document_ner_adapter = DocumentNERAdapter()

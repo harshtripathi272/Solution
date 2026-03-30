@@ -16,6 +16,11 @@ class SeverityLevel(str, Enum):
     MODERATE = "green"
     UNKNOWN = "unknown"
 
+
+class NeedTemporality(str, Enum):
+    CHRONIC = "chronic"
+    ACUTE = "acute"
+
 class CrisisType(str, Enum):
     FLOOD = "flood"
     CYCLONE = "cyclone"
@@ -40,6 +45,18 @@ class SkillMatrix(BaseModel):
     requires_counseling: bool = False
     min_volunteers_needed: int = 1
 
+
+class ActivationWindow(BaseModel):
+    start_at: datetime
+    end_at: datetime
+
+
+class DocumentMetadata(BaseModel):
+    source_ngo: str
+    pdf_url: str
+    publication_date: Optional[datetime] = None
+    sha256_hash: str
+
 class CrisisEvent(BaseModel):
     id: str
     source: str # e.g., 'GDACS', 'NDMA', 'TWITTER', 'CITIZEN'
@@ -49,6 +66,8 @@ class CrisisEvent(BaseModel):
     severity: SeverityLevel
     location: LocationMetadata
     description: str
+    need_temporality: NeedTemporality = NeedTemporality.ACUTE
+    activation_window: Optional[ActivationWindow] = None
     is_verified: bool = False
     skills_required: SkillMatrix
     raw_data: Optional[Dict[str, Any]] = None # Storing the direct payload for debugging/NLP
@@ -76,9 +95,11 @@ class UnifiedIngestionEvent(BaseModel):
     severity: str
     timestamp: datetime
     source: str
+    need_temporality: NeedTemporality = NeedTemporality.ACUTE
     confidence_score: float = Field(ge=0.0, le=1.0)
     description: str = ""
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    document_metadata: Optional[DocumentMetadata] = None
 
     # --- Unification pipeline fields (set by unified_pipeline.py) ---
     # 5-char geohash of the event location (~5 km cell). Populated after geocoding.
@@ -155,6 +176,7 @@ def to_crisis_event(event: UnifiedIngestionEvent, tier: int, verified: bool) -> 
         timestamp=event.timestamp.astimezone(timezone.utc),
         type=crisis_type,
         severity=severity,
+        need_temporality=event.need_temporality,
         location=LocationMetadata(
             latitude=event.location.latitude,
             longitude=event.location.longitude,
@@ -172,5 +194,8 @@ def to_crisis_event(event: UnifiedIngestionEvent, tier: int, verified: bool) -> 
             requires_counseling=crisis_type in {CrisisType.VIOLENCE, CrisisType.MEDICAL},
             min_volunteers_needed=10 if severity == SeverityLevel.CRITICAL else 3,
         ),
-        raw_data=event.metadata,
+        raw_data={
+            **event.metadata,
+            "document_metadata": event.document_metadata.model_dump() if event.document_metadata else None,
+        },
     )
