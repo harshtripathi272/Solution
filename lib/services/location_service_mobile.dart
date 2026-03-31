@@ -23,3 +23,13 @@ Stream<Map<String, double>> getPositionStream() {
     (pos) => {'lat': pos.latitude, 'lon': pos.longitude},
   );
 }
+
+Future<Map<String, double>> getCurrentPosition() async {
+  final pos = await Geolocator.getCurrentPosition(
+    locationSettings: const LocationSettings(
+      accuracy: LocationAccuracy.medium,
+      timeLimit: Duration(seconds: 10),
+    ),
+  );
+  return {'lat': pos.latitude, 'lon': pos.longitude};
+}

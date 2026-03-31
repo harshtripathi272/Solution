@@ -3,6 +3,10 @@ class AppConstants {
   static const String appTagline = 'Bridging Service, Building Impact';
   static const String appVersion = '1.0.0';
 
+  // Backend API configuration
+  static const String apiBaseUrl = 'http://localhost:8000'; // TODO: Change to production URL
+  static const String heatmapDataEndpoint = '/api/v1/heatmap-data';
+
   // SDG Goals relevant to this app
   static const Map<int, String> sdgGoals = {
     1: 'No Poverty',

@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/field_report_model.dart';
 import '../models/task_model.dart';
@@ -181,6 +181,58 @@ class AppState extends ChangeNotifier {
         assignedTo: volunteerId,
       );
       notifyListeners();
+    }
+  }
+
+  Future<bool> submitReport({
+    required String needType,
+    required String urgency,
+    required String description,
+    List<String>? mediaUrls,
+  }) async {
+    if (_apiClient == null) return false;
+
+    try {
+      // 1. Get current location
+      final pos = await _locationService!.getCurrentPosition();
+
+      // 2. Prepare payload
+      final payload = {
+        "latitude": pos['lat'],
+        "longitude": pos['lon'],
+        "need_type": needType.toLowerCase(),
+        "severity": urgency.toLowerCase(),
+        "description": description,
+        "media_urls": mediaUrls ?? [],
+      };
+
+      // 3. Send to backend
+      final response = await _apiClient!.post("/api/v1/reports", payload);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // 4. Update local state
+        final data = jsonDecode(response.body);
+        final report = FieldReport(
+          id: data['id'],
+          ngoId: _currentUser?.ngoId ?? 'local',
+          submittedBy: _currentUser?.id ?? 'me',
+          needType: needType,
+          description: description,
+          location: "${pos['lat']?.toStringAsFixed(3)}, ${pos['lon']?.toStringAsFixed(3)}",
+          latitude: pos['lat']!,
+          longitude: pos['lon']!,
+          urgency: urgency,
+          estimatedPeopleAffected: 0, // Backend might calculate this later
+          source: ReportSource.text, // Default
+          ward: 'unresolved',
+        );
+        addFieldReport(report);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      if (kDebugMode) print('[AppState] Submit report failed: $e');
+      return false;
     }
   }
 }

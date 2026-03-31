@@ -1,9 +1,12 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.staticfiles import StaticFiles
+from typing import Any, Dict, List
 from datetime import datetime, timezone, timedelta
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 import asyncio
 import os
 import httpx
@@ -23,6 +26,7 @@ from pipeline.orchestrators.unified import unified_pipeline
 from pipeline.processing.multimodal_preprocessor import multimodal_preprocessor
 from pipeline.core.pubsub import broker, TOPIC_INGESTION_NORMALIZED
 from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent
+from api import heatmap_router
 
 class RegisterRequest(BaseModel):
     requested_role: str = "volunteer"
@@ -117,6 +121,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+app.include_router(heatmap_router)
+
+_heatmap_ui_path = Path(__file__).resolve().parent.parent / "ui" / "heatmap"
+if _heatmap_ui_path.exists():
+    app.mount("/ui/heatmap", StaticFiles(directory=str(_heatmap_ui_path), html=True), name="heatmap-ui")
 
 @app.get("/")
 def health_check():

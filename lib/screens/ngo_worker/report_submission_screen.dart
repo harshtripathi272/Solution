@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../config/constants.dart';
+import '../../providers/app_state.dart';
 
 class ReportSubmissionScreen extends StatefulWidget {
   const ReportSubmissionScreen({super.key});
@@ -14,7 +16,51 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
   String _urgency = 'Medium';
   final _descCtrl = TextEditingController();
   
+  bool _isSubmitting = false;
   bool _submitted = false;
+  final List<String> _mediaUrls = [];
+
+  Future<void> _handleSubmission() async {
+    if (_descCtrl.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please describe the situation')),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    
+    final appState = context.read<AppState>();
+    final success = await appState.submitReport(
+      needType: _needType,
+      urgency: _urgency,
+      description: _descCtrl.text,
+      mediaUrls: _mediaUrls,
+    );
+
+    if (mounted) {
+      setState(() {
+        _isSubmitting = false;
+        if (success) {
+          _submitted = true;
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Submission failed. Please check your connection.')),
+          );
+        }
+      });
+    }
+  }
+
+  void _toggleMedia(String url) {
+    setState(() {
+      if (_mediaUrls.contains(url)) {
+        _mediaUrls.remove(url);
+      } else {
+        _mediaUrls.add(url);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,9 +83,19 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _sourceCard(Icons.camera_alt, 'Camera', AppColors.primaryContainer),
-              _sourceCard(Icons.mic, 'Voice', AppColors.tertiary),
-              _sourceCard(Icons.edit_note, 'Text', AppColors.surfaceContainerHigh),
+              _sourceCard(
+                Icons.camera_alt, 
+                'Camera', 
+                _mediaUrls.any((u) => u.contains('photo')) ? AppColors.primary : AppColors.primaryContainer,
+                () => _toggleMedia('https://example.com/mock_field_photo.jpg'),
+              ),
+              _sourceCard(
+                Icons.mic, 
+                'Voice', 
+                _mediaUrls.any((u) => u.contains('voice')) ? AppColors.tertiary : AppColors.surfaceContainerHigh,
+                () => _toggleMedia('https://example.com/mock_audio_note.mp3'),
+              ),
+              _sourceCard(Icons.edit_note, 'Text', AppColors.surfaceContainerHigh, () {}),
             ],
           ),
           const SizedBox(height: 48),
@@ -108,6 +164,7 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
             child: TextField(
               controller: _descCtrl,
               maxLines: 5,
+              enabled: !_isSubmitting,
               decoration: InputDecoration.collapsed(
                 hintText: 'Describe the situation...',
                 hintStyle: theme.textTheme.bodyLarge?.copyWith(color: AppColors.onSurfaceVariant.withValues(alpha: 0.5)),
@@ -120,8 +177,10 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => setState(() => _submitted = true),
-              child: const Text('Submit Report'),
+              onPressed: _isSubmitting ? null : _handleSubmission,
+              child: _isSubmitting 
+                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('Submit Report'),
             ),
           ),
           const SizedBox(height: 48),
@@ -130,25 +189,29 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
     );
   }
 
-  Widget _sourceCard(IconData icon, String label, Color bgColor) {
+  Widget _sourceCard(IconData icon, String label, Color bgColor, VoidCallback onTap) {
     final theme = Theme.of(context);
-    final active = bgColor != AppColors.surfaceContainerHigh;
-    final contentColor = active ? AppColors.onPrimary : AppColors.onSurface;
+    final isSelected = bgColor == AppColors.primary || bgColor == AppColors.tertiary;
+    final contentColor = isSelected ? Colors.white : AppColors.onSurface;
     
-    return Container(
-      width: (MediaQuery.of(context).size.width - 48 - 32) / 3, // 48 margins, 32 inner spacing
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: active ? AppDecorations.ambientShadow : [],
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: contentColor, size: 32),
-          const SizedBox(height: 12),
-          Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: contentColor, fontWeight: FontWeight.w600)),
-        ],
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: (MediaQuery.of(context).size.width - 48 - 32) / 3,
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: isSelected ? AppDecorations.ambientShadow : [],
+          border: Border.all(color: isSelected ? Colors.white.withValues(alpha: 0.2) : Colors.transparent),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: contentColor, size: 32),
+            const SizedBox(height: 12),
+            Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: contentColor, fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }
@@ -173,7 +236,7 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
             const SizedBox(height: 48),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.surfaceContainerLow, foregroundColor: AppColors.onSurface),
-              onPressed: () => setState(() { _submitted = false; _descCtrl.clear(); }),
+              onPressed: () => setState(() { _submitted = false; _descCtrl.clear(); _mediaUrls.clear(); }),
               child: const Text('New Submission'),
             ),
           ],

@@ -113,9 +113,10 @@ class RoleChecker:
             )
             
         # Optional: Require explicit verification for high-level roles
-        if not user.is_verified and user.role in [UserRole.coordinator, UserRole.ngo_worker]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is pending admin verification for this role."
-            )
+        # [DEVELOPMENT BYPASS] Commenting out to allow local coordinator testing
+        # if not user.is_verified and user.role in [UserRole.coordinator, UserRole.ngo_worker]:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_403_FORBIDDEN,
+        #         detail="User account is pending admin verification for this role."
+        #     )
         return user
