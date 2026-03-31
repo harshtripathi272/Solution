@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 _KEY_PREFIX = "region"
 _CACHE_TTL  = 3600   # 1 hour
+_COMPOSITE_KEY_PREFIX = "geohash:severity:composite"
 
 
 class RedisNeedCache:
@@ -128,10 +129,34 @@ class RedisNeedCache:
         except Exception:
             pass
 
+    def set_composite(self, geohash: str, score: float) -> None:
+        """Stores geohash:severity:composite score for allocator hot path."""
+        if not self._redis or not geohash:
+            return
+        key = self._composite_key(geohash)
+        try:
+            self._redis.set(key, round(float(score), 4), ex=_CACHE_TTL)
+        except Exception as exc:
+            logger.warning("[NeedCache] set_composite failed for %s: %s", key, exc)
+
+    def get_composite(self, geohash: str) -> float:
+        if not self._redis or not geohash:
+            return 0.0
+        key = self._composite_key(geohash)
+        try:
+            raw = self._redis.get(key)
+            return float(raw) if raw else 0.0
+        except Exception:
+            return 0.0
+
     # Helpers
     @staticmethod
     def _make_key(geohash: str, need_type: str) -> str:
         return f"{_KEY_PREFIX}:{geohash}:{need_type}"
+
+    @staticmethod
+    def _composite_key(geohash: str) -> str:
+        return f"{_COMPOSITE_KEY_PREFIX}:{geohash}"
 
 
 # Global singleton

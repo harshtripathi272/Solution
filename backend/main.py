@@ -6,6 +6,7 @@ import logging
 from contextlib import asynccontextmanager
 import asyncio
 import os
+import httpx
 
 from auth import get_current_user, get_current_user_token, RoleChecker, db, firestore
 from models import UserProfile, UserRole
@@ -53,6 +54,11 @@ class ChangeDetectionWebhookRequest(BaseModel):
 
 class DocumentJsonlIngestRequest(BaseModel):
     file_path: str
+    max_documents: int | None = None
+
+
+class DocumentJsonlUrlIngestRequest(BaseModel):
+    jsonl_url: str
     max_documents: int | None = None
 
 # Configure basic logging
@@ -287,6 +293,33 @@ async def ingest_documents_from_jsonl(
     except Exception as exc:
         logger.error("Document JSONL ingestion failed: %s", exc)
         raise HTTPException(status_code=500, detail="Document JSONL ingestion failed")
+
+
+@app.post("/api/v1/ingestion/documents/jsonl-url")
+async def ingest_documents_from_jsonl_url(
+    payload: DocumentJsonlUrlIngestRequest,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
+):
+    """On-demand document-intelligence enqueue from remotely hosted Scrapy JSONL output."""
+    try:
+        count = await ingestion_manager.ingest_document_jsonl_url_once(
+            jsonl_url=payload.jsonl_url,
+            max_documents=payload.max_documents,
+        )
+        return {
+            "status": "ok",
+            "enqueued": count,
+            "jsonl_url": payload.jsonl_url,
+            "max_documents": payload.max_documents,
+            "requested_by": current_user.uid,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=exc.response.status_code, detail="Failed to fetch JSONL URL")
+    except Exception as exc:
+        logger.error("Document JSONL URL ingestion failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Document JSONL URL ingestion failed")
 
 @app.put("/api/v1/profile/update")
 def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(get_current_user_token)):

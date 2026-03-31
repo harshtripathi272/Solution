@@ -33,6 +33,9 @@ from pipeline.processing.geocoding import geocoding_service
 from pipeline.processing.geohash import encode as geohash_encode
 from pipeline.processing.aggregation import aggregation_layer
 from pipeline.storage import firestore_store, bigquery_store, redis_need_cache
+from pipeline.storage.location import location_store
+from severity_engine import severity_engine
+from severity_engine.constants import CLASSIFICATION_TO_SEVERITY_LABEL
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +169,35 @@ class UnifiedPipeline:
             logger.debug("[UnifiedPipeline] Skipped duplicate: %s", event.id)
             return
 
-        # Step 6 — Storage fan-out (all writes fire concurrently)
+        # Step 6 — Multi-dimensional severity scoring (acute/chronic/composite)
+        nearby = location_store.get_nearby(
+            crisis_lat=event.location.latitude,
+            crisis_lon=event.location.longitude,
+            radius_km=20.0,
+        )
+        severity_result = await severity_engine.calculate(
+            event,
+            nearby_volunteer_count=len(nearby),
+        )
+
+        severity_payload = severity_result.to_dict()
+        severity_payload["legacy_merged_score"] = merged_score
+
+        classification = severity_payload.get("classification", "Moderate")
+        severity_label = CLASSIFICATION_TO_SEVERITY_LABEL.get(classification, event.severity)
+        final_score = float(severity_payload.get("composite_urgency", merged_score))
+
+        event = event.model_copy(
+            update={
+                "severity": severity_label,
+                "metadata": {
+                    **event.metadata,
+                    "severity_engine": severity_payload,
+                },
+            }
+        )
+
+        # Step 7 — Storage fan-out (all writes fire concurrently)
         if not event.geohash:
             logger.warning(
                 "[UnifiedPipeline] No geohash for event %s — skipping storage.", event.id
@@ -175,17 +206,20 @@ class UnifiedPipeline:
 
         logger.info(
             "[UnifiedPipeline] Storing event %s | geohash=%s | need=%s | score=%.3f | tier=%d",
-            event.id, event.geohash, event.need_type, merged_score, event.source_tier,
+            event.id, event.geohash, event.need_type, final_score, event.source_tier,
         )
 
         import asyncio
         storage_tasks = [
-            firestore_store.upsert_region(event, merged_score),
-            firestore_store.append_event(event, merged_score),
-            bigquery_store.append(event, merged_score),
+            firestore_store.upsert_region(event, final_score),
+            firestore_store.append_event(event, final_score),
+            firestore_store.upsert_chronic_score(event, severity_payload),
+            bigquery_store.append(event, final_score),
+            bigquery_store.append_severity_event(event, severity_payload),
+            bigquery_store.append_severity_timeseries(event, severity_payload),
         ]
         if event.document_metadata is not None:
-            storage_tasks.append(bigquery_store.append_document_event(event, merged_score))
+            storage_tasks.append(bigquery_store.append_document_event(event, final_score))
 
         results = await asyncio.gather(
             *storage_tasks,
@@ -203,9 +237,10 @@ class UnifiedPipeline:
         logger.info("[UnifiedPipeline] Storage fan-out completed for %s", event.id)
 
         # Redis cache is synchronous-friendly, call after gather
-        redis_need_cache.set(event.geohash, event.need_type, merged_score)
+        redis_need_cache.set(event.geohash, event.need_type, final_score)
+        redis_need_cache.set_composite(event.geohash, final_score)
 
-        # Step 7 — Downstream Publishing (for Allocation/Validation)
+        # Step 8 — Downstream Publishing (for Allocation/Validation)
         # We re-publish the ENRICHED event to its tier-based topic so that
         # downstream services (AllocationEngine) can work with geocoded/geohashed data.
         if event.source_tier == 1:

@@ -77,6 +77,7 @@ class FirestoreStore:
 
     _COLLECTION = "need_regions"
     _DOCUMENT_REGISTRY_COLLECTION = "document_registry"
+    _CHRONIC_COLLECTION = "chronic_scores"
 
     def __init__(self) -> None:
         self._db = None
@@ -127,6 +128,7 @@ class FirestoreStore:
 
         doc_ref = db.collection(self._COLLECTION).document(event.geohash)
 
+        severity_engine = (event.metadata or {}).get("severity_engine", {})
         update_data = {
             "centroid_lat": event.location.latitude,
             "centroid_lon": event.location.longitude,
@@ -135,11 +137,21 @@ class FirestoreStore:
             f"need_scores.{event.need_type}": score,
             "dominant_need": event.need_type,
             "max_severity": event.severity,
+            "composite_urgency": severity_engine.get("composite_urgency", score),
+            "severity_classification": severity_engine.get("classification"),
+            "recommended_response_time": severity_engine.get("recommended_response_time"),
             "latest_event_id": event.id,
             "latest_event_source": event.source,
             "latest_text_preview": _preview_text(event, limit=100),
             # Increment event count atomically
             "event_count": self._firestore.Increment(1),
+            "severity_history": self._firestore.ArrayUnion([
+                {
+                    "timestamp": event.timestamp,
+                    "score": severity_engine.get("composite_urgency", score),
+                    "classification": severity_engine.get("classification", "Moderate"),
+                }
+            ]),
         }
 
         try:
@@ -181,12 +193,20 @@ class FirestoreStore:
             .document(event.id)
         )
 
+        severity_engine = (event.metadata or {}).get("severity_engine", {})
         entry = {
             "event_id":           event.id,
             "source":             event.source,
             "need_type":          event.need_type,
             "severity":           event.severity,
             "severity_score":     score,
+            "severity_acute":     severity_engine.get("severity_acute"),
+            "severity_chronic":   severity_engine.get("severity_chronic"),
+            "composite_urgency":  severity_engine.get("composite_urgency", score),
+            "reliability_score":  severity_engine.get("reliability_score"),
+            "classification":     severity_engine.get("classification"),
+            "recommended_response_time": severity_engine.get("recommended_response_time"),
+            "severity_explanation": severity_engine.get("explanation"),
             "confidence_score":   event.confidence_score,
             "description":        event.description[:500],   # truncate for storage
             "timestamp":          event.timestamp,
@@ -208,6 +228,47 @@ class FirestoreStore:
             )
         except Exception as exc:
             logger.error("[FirestoreStore] append_event failed for %s: %s", event.id, exc)
+
+    async def upsert_chronic_score(self, event: "UnifiedIngestionEvent", severity_payload: dict) -> None:
+        """
+        Persists chronic score snapshots with TTL-friendly expires_at field.
+        Firestore TTL indexing should be configured on chronic_scores.expires_at.
+        """
+        db = self._get_db()
+        if not db:
+            return
+
+        geohash = event.geohash or ""
+        if not geohash:
+            return
+
+        chronic_score = float(severity_payload.get("severity_chronic", 0.0) or 0.0)
+        if chronic_score <= 0.0:
+            return
+
+        from datetime import timedelta
+
+        doc_id = f"{geohash}:{event.need_type}"
+        doc_ref = db.collection(self._CHRONIC_COLLECTION).document(doc_id)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=180)
+
+        payload = {
+            "geohash": geohash,
+            "need_type": event.need_type,
+            "severity_chronic": chronic_score,
+            "source": event.source,
+            "last_event_id": event.id,
+            "updated_at": datetime.now(timezone.utc),
+            "expires_at": expires_at,
+        }
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: doc_ref.set(payload, merge=True),
+            )
+        except Exception as exc:
+            logger.error("[FirestoreStore] upsert_chronic_score failed for %s: %s", doc_id, exc)
 
     async def get_region(self, geohash: str) -> dict | None:
         """Read the current-state document for a region. Returns None if absent."""

@@ -87,6 +87,35 @@ _DOCUMENT_SCHEMA = [
     {"name": "need_temporality",      "type": "STRING",    "mode": "NULLABLE"},
 ]
 
+_SEVERITY_SCHEMA = [
+    {"name": "event_id", "type": "STRING", "mode": "REQUIRED"},
+    {"name": "region_id", "type": "STRING", "mode": "REQUIRED"},
+    {"name": "need_type", "type": "STRING", "mode": "REQUIRED"},
+    {"name": "timestamp", "type": "TIMESTAMP", "mode": "REQUIRED"},
+    {"name": "source", "type": "STRING", "mode": "REQUIRED"},
+    {"name": "lineage", "type": "STRING", "mode": "NULLABLE"},
+    {"name": "severity_acute", "type": "FLOAT64", "mode": "NULLABLE"},
+    {"name": "severity_chronic", "type": "FLOAT64", "mode": "NULLABLE"},
+    {"name": "composite_urgency", "type": "FLOAT64", "mode": "NULLABLE"},
+    {"name": "reliability_score", "type": "FLOAT64", "mode": "NULLABLE"},
+    {"name": "source_reliability", "type": "FLOAT64", "mode": "NULLABLE"},
+    {"name": "detection_confidence", "type": "FLOAT64", "mode": "NULLABLE"},
+    {"name": "trend_bonus", "type": "FLOAT64", "mode": "NULLABLE"},
+    {"name": "gap_penalty", "type": "FLOAT64", "mode": "NULLABLE"},
+    {"name": "classification", "type": "STRING", "mode": "NULLABLE"},
+    {"name": "recommended_response_time", "type": "STRING", "mode": "NULLABLE"},
+]
+
+_SEVERITY_TIMESERIES_SCHEMA = [
+    {"name": "region_id", "type": "STRING", "mode": "REQUIRED"},
+    {"name": "need_type", "type": "STRING", "mode": "REQUIRED"},
+    {"name": "event_id", "type": "STRING", "mode": "REQUIRED"},
+    {"name": "timestamp", "type": "TIMESTAMP", "mode": "REQUIRED"},
+    {"name": "severity_value", "type": "FLOAT64", "mode": "NULLABLE"},
+    {"name": "classification", "type": "STRING", "mode": "NULLABLE"},
+    {"name": "feedback", "type": "STRING", "mode": "NULLABLE"},
+]
+
 
 class BigQueryStore:
     """Append-only BigQuery sink — inserts rows via streaming insert API."""
@@ -95,6 +124,8 @@ class BigQueryStore:
         self._client = None
         self._table_ref: str = ""
         self._document_table_ref: str = ""
+        self._severity_table_ref: str = ""
+        self._severity_timeseries_table_ref: str = ""
         self._enabled = False
         self._init()
 
@@ -110,11 +141,15 @@ class BigQueryStore:
         dataset = os.environ.get("BIGQUERY_DATASET", "sevasetu_events").strip()
         table = os.environ.get("BIGQUERY_TABLE", "need_events").strip()
         document_table = os.environ.get("BIGQUERY_DOCUMENT_TABLE", "document_events").strip()
+        severity_table = os.environ.get("BIGQUERY_SEVERITY_TABLE", "severity_events").strip()
+        severity_timeseries_table = os.environ.get("BIGQUERY_SEVERITY_TIMESERIES_TABLE", "severity_timeseries").strip()
 
         try:
             self._client = bigquery.Client(project=project)
             self._table_ref = f"{project}.{dataset}.{table}"
             self._document_table_ref = f"{project}.{dataset}.{document_table}"
+            self._severity_table_ref = f"{project}.{dataset}.{severity_table}"
+            self._severity_timeseries_table_ref = f"{project}.{dataset}.{severity_timeseries_table}"
             self._ensure_table(dataset, table, schema_config=_SCHEMA)
             self._ensure_table(
                 dataset,
@@ -122,9 +157,23 @@ class BigQueryStore:
                 schema_config=_DOCUMENT_SCHEMA,
                 partition_field="extraction_timestamp",
             )
+            self._ensure_table(
+                dataset,
+                severity_table,
+                schema_config=_SEVERITY_SCHEMA,
+                partition_field="timestamp",
+            )
+            self._ensure_table(
+                dataset,
+                severity_timeseries_table,
+                schema_config=_SEVERITY_TIMESERIES_SCHEMA,
+                partition_field="timestamp",
+            )
             self._enabled = True
             logger.info("[BigQuery] Sink ready → %s", self._table_ref)
             logger.info("[BigQuery] Document sink ready → %s", self._document_table_ref)
+            logger.info("[BigQuery] Severity sink ready → %s", self._severity_table_ref)
+            logger.info("[BigQuery] Severity timeseries sink ready → %s", self._severity_timeseries_table_ref)
         except Exception as exc:
             logger.error("[BigQuery] Init failed: %s — sink disabled.", exc)
 
@@ -245,6 +294,65 @@ class BigQueryStore:
                 logger.debug("[BigQuery] Appended document event %s", event.id)
         except Exception as exc:
             logger.error("[BigQuery] append_document_event failed for %s: %s", event.id, exc)
+
+    async def append_severity_event(self, event: "UnifiedIngestionEvent", severity_payload: dict) -> None:
+        if not self._enabled or not self._severity_table_ref:
+            return
+
+        row = {
+            "event_id": event.id,
+            "region_id": event.geohash or "",
+            "need_type": event.need_type,
+            "timestamp": event.timestamp.isoformat(),
+            "source": event.source,
+            "lineage": (event.metadata or {}).get("lineage", "event"),
+            "severity_acute": severity_payload.get("severity_acute"),
+            "severity_chronic": severity_payload.get("severity_chronic"),
+            "composite_urgency": severity_payload.get("composite_urgency"),
+            "reliability_score": severity_payload.get("reliability_score"),
+            "source_reliability": severity_payload.get("source_reliability"),
+            "detection_confidence": severity_payload.get("detection_confidence"),
+            "trend_bonus": severity_payload.get("trend_bonus"),
+            "gap_penalty": severity_payload.get("gap_penalty"),
+            "classification": severity_payload.get("classification"),
+            "recommended_response_time": severity_payload.get("recommended_response_time"),
+        }
+
+        try:
+            import asyncio
+            errors: List[dict] = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self._client.insert_rows_json(self._severity_table_ref, [row]),
+            )
+            if errors:
+                logger.error("[BigQuery] Severity insert errors: %s", errors)
+        except Exception as exc:
+            logger.error("[BigQuery] append_severity_event failed for %s: %s", event.id, exc)
+
+    async def append_severity_timeseries(self, event: "UnifiedIngestionEvent", severity_payload: dict) -> None:
+        if not self._enabled or not self._severity_timeseries_table_ref:
+            return
+
+        row = {
+            "region_id": event.geohash or "",
+            "need_type": event.need_type,
+            "event_id": event.id,
+            "timestamp": event.timestamp.isoformat(),
+            "severity_value": severity_payload.get("composite_urgency"),
+            "classification": severity_payload.get("classification"),
+            "feedback": (event.metadata or {}).get("ground_truth_feedback"),
+        }
+
+        try:
+            import asyncio
+            errors: List[dict] = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self._client.insert_rows_json(self._severity_timeseries_table_ref, [row]),
+            )
+            if errors:
+                logger.error("[BigQuery] Severity timeseries insert errors: %s", errors)
+        except Exception as exc:
+            logger.error("[BigQuery] append_severity_timeseries failed for %s: %s", event.id, exc)
 
 
 # Global singleton

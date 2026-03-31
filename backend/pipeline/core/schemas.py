@@ -168,6 +168,18 @@ def to_crisis_event(event: UnifiedIngestionEvent, tier: int, verified: bool) -> 
     if not geohash:
         geohash = f"coord:{event.location.latitude:.3f}:{event.location.longitude:.3f}"
     description = event.description or f"{event.need_type} alert from {event.source}"
+    severity_meta = (event.metadata or {}).get("severity_engine", {})
+    urgency = float(severity_meta.get("composite_urgency", 0.0) or 0.0)
+    classification = str(severity_meta.get("classification", "")).strip()
+
+    if urgency > 0:
+        min_volunteers = max(3, int(round(urgency * 20)))
+    elif classification == "Extreme":
+        min_volunteers = 16
+    elif classification == "Severe":
+        min_volunteers = 10
+    else:
+        min_volunteers = 10 if severity == SeverityLevel.CRITICAL else 3
 
     return CrisisEvent(
         id=event.id or str(uuid.uuid4()),
@@ -192,7 +204,7 @@ def to_crisis_event(event: UnifiedIngestionEvent, tier: int, verified: bool) -> 
             requires_rescue=needs_rescue,
             requires_logistics=severity in {SeverityLevel.CRITICAL, SeverityLevel.HIGH},
             requires_counseling=crisis_type in {CrisisType.VIOLENCE, CrisisType.MEDICAL},
-            min_volunteers_needed=10 if severity == SeverityLevel.CRITICAL else 3,
+            min_volunteers_needed=min_volunteers,
         ),
         raw_data={
             **event.metadata,

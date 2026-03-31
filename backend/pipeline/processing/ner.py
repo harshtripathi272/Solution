@@ -55,6 +55,10 @@ class DocumentNERAdapterResult:
     severity: str = "moderate"
     confidence: float = 0.5
     need_temporality: NeedTemporality = NeedTemporality.CHRONIC
+    source_tier: str = "document"
+    source_type: str = "ngo_report"
+    ocr_confidence: float = 0.0
+    table_extraction_completeness: float = 0.0
 
 
 # Backward compat wrapper: NERExtractor delegates to unified extractor
@@ -122,13 +126,26 @@ class DocumentNERAdapter:
         )
         confidence = self._safe_float(payload.get("confidence"), default=0.5)
         confidence = max(0.0, min(confidence, 1.0))
+        ocr_confidence = max(0.0, min(self._safe_float(payload.get("ocr_confidence"), default=0.0), 1.0))
+        table_extraction_completeness = max(
+            0.0,
+            min(self._safe_float(payload.get("table_extraction_completeness"), default=0.0), 1.0),
+        )
+        weighted_confidence = max(
+            0.0,
+            min(1.0, (confidence * 0.8) + (ocr_confidence * 0.15) + (table_extraction_completeness * 0.05)),
+        )
 
         return DocumentNERAdapterResult(
             places=[str(p).strip() for p in places if str(p).strip()],
             need_type=need_type,
             severity=severity,
-            confidence=confidence,
+            confidence=weighted_confidence,
             need_temporality=NeedTemporality.CHRONIC,
+            source_tier="document",
+            source_type="ngo_report",
+            ocr_confidence=ocr_confidence,
+            table_extraction_completeness=table_extraction_completeness,
         )
 
     @staticmethod

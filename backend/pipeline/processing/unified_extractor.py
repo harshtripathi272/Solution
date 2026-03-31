@@ -598,5 +598,4 @@ PDF extracted text (truncated):
 
 # Global singletons
 nvidia_extractor = GeminiExtractor()
-# Backward compatibility alias
-gemini_extractor = nvidia_extractor
+

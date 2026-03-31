@@ -117,6 +117,17 @@ class IngestionManager:
             max_documents=max_documents,
         )
 
+    async def ingest_document_jsonl_url_once(self, jsonl_url: str, max_documents: int | None = None) -> int:
+        if max_documents is not None and max_documents <= 0:
+            raise ValueError("max_documents must be positive when provided")
+        if not jsonl_url:
+            raise ValueError("jsonl_url is required")
+
+        return await document_ingestion_service.ingest_jsonl_url(
+            jsonl_url=jsonl_url,
+            max_documents=max_documents,
+        )
+
     async def _run_document_worker(self):
         while True:
             try:
