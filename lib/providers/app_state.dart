@@ -19,11 +19,11 @@ class AppState extends ChangeNotifier {
   String? _backendError;
 
   // Data
-  List<FieldReport> _reports = [];
-  List<VolunteerTask> _tasks = [];
-  List<AppUser> _volunteers = [];
-  List<CrisisAlert> _crisisAlerts = [];
-  Map<String, dynamic> _impactMetrics = {};
+  final List<FieldReport> _reports = [];
+  final List<VolunteerTask> _tasks = [];
+  final List<AppUser> _volunteers = [];
+  final List<CrisisAlert> _crisisAlerts = [];
+  final Map<String, dynamic> _impactMetrics = {};
 
   // UI state
   int _currentNavIndex = 0;

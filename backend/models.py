@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from enum import Enum
 from datetime import datetime
@@ -16,7 +16,7 @@ class UserProfile(BaseModel):
     organization_id: Optional[str] = None
     phone: Optional[str] = None
     location: Optional[str] = None
-    skills: list[str] = []
+    skills: list[str] = Field(default_factory=list)
     is_available: bool = True
     is_verified: bool = False
     created_at: Optional[datetime] = None

@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pipeline.schemas import IngestionLocation, UnifiedIngestionEvent
+from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent
 
 logger = logging.getLogger(__name__)
 

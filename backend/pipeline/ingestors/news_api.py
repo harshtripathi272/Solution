@@ -2,7 +2,7 @@ import hashlib
 import logging
 from datetime import datetime, timezone
 
-from pipeline.schemas import IngestionLocation, UnifiedIngestionEvent
+from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent
 from .base import PeriodicIngestor
 
 logger = logging.getLogger(__name__)

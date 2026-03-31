@@ -1,20 +1,24 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 from contextlib import asynccontextmanager
 import asyncio
+import os
+import httpx
 
 from auth import get_current_user, get_current_user_token, RoleChecker, db, firestore
 from models import UserProfile, UserRole
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Pipeline Imports
-from pipeline.validation_service import validation_service
-from pipeline.allocation_engine import allocation_engine
+from pipeline.orchestrators.validation import validation_service
+from pipeline.orchestrators.allocation import allocation_engine
+from pipeline.orchestrators.document_stream import document_stream_orchestrator
 from pipeline.ingestors.manager import ingestion_manager
-from pipeline.location_store import location_store
+from pipeline.storage.location import location_store
+from pipeline.orchestrators.unified import unified_pipeline
 
 class RegisterRequest(BaseModel):
     requested_role: str = "volunteer"
@@ -23,11 +27,11 @@ class LocationUpdate(BaseModel):
     latitude: float
     longitude: float
     timestamp: datetime | None = None
-    skills: list[str] = []
+    skills: list[str] = Field(default_factory=list)
     consent: bool = True  # Must be True for backend to store location
 
 class ProfileUpdate(BaseModel):
-    name: str
+    name: str | None = None
     phone: str | None = None
     location: str | None = None
     skills: list[str] | None = None
@@ -38,6 +42,25 @@ class ProfileUpdate(BaseModel):
 class SurveyIngestRequest(BaseModel):
     file_path: str
 
+
+class NGOReportsIngestRequest(BaseModel):
+    max_reports: int | None = None
+
+
+class ChangeDetectionWebhookRequest(BaseModel):
+    source: str | None = None
+    changed_url: str | None = None
+
+
+class DocumentJsonlIngestRequest(BaseModel):
+    file_path: str
+    max_documents: int | None = None
+
+
+class DocumentJsonlUrlIngestRequest(BaseModel):
+    jsonl_url: str
+    max_documents: int | None = None
+
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,6 +70,8 @@ async def lifespan(app: FastAPI):
     logger.info("---| Booting SevaSetu Crisis Intelligence Pipeline |---")
     validation_service.start()
     allocation_engine.start()
+    document_stream_orchestrator.start()
+    unified_pipeline.start()        # data unification + persistent storage
     ingestion_manager.start()
     yield
     await ingestion_manager.stop()
@@ -60,10 +85,14 @@ app = FastAPI(
 )
 
 # CORS Middleware config
+_cors_origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "*").strip()
+_allow_origins = [origin.strip() for origin in _cors_origins_raw.split(",") if origin.strip()] or ["*"]
+_allow_credentials = not (len(_allow_origins) == 1 and _allow_origins[0] == "*")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_allow_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -157,7 +186,10 @@ def update_location(loc: LocationUpdate, decoded_token: dict = Depends(get_curre
             detail="Location update throttled or coordinates invalid. Try again shortly."
         )
 
-    return {"status": "ok", "cached_until": "2 hours from now"}
+    return {
+        "status": "ok",
+        "cached_until": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
+    }
 
 @app.delete("/api/v1/location/revoke")
 def revoke_location(decoded_token: dict = Depends(get_current_user_token)):
@@ -192,6 +224,103 @@ async def ingest_survey_data(
         logger.error("Survey ingestion failed: %s", exc)
         raise HTTPException(status_code=500, detail="Survey ingestion failed")
 
+
+@app.post("/api/v1/ingestion/ngo-reports")
+async def ingest_ngo_reports(
+    payload: NGOReportsIngestRequest,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
+):
+    """On-demand scrape of NGO publication pages (prototype mode)."""
+    try:
+        count = await ingestion_manager.ingest_ngo_reports_once(max_reports=payload.max_reports)
+        return {
+            "status": "ok",
+            "ingested": count,
+            "max_reports": payload.max_reports,
+            "requested_by": current_user.uid,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("NGO reports ingestion failed: %s", exc)
+        raise HTTPException(status_code=500, detail="NGO reports ingestion failed")
+
+
+@app.post("/api/v1/webhooks/changedetection/ngo")
+async def changedetection_ngo_webhook(
+    payload: ChangeDetectionWebhookRequest,
+    x_webhook_token: str | None = Header(default=None),
+):
+    """Webhook target for changedetection.io to trigger immediate NGO scrape."""
+    expected_token = os.getenv("CHANGEDETECTION_WEBHOOK_TOKEN", "").strip()
+    if expected_token:
+        provided = (x_webhook_token or "").strip()
+        if provided != expected_token:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook token")
+
+    max_reports = int(os.getenv("INGEST_NGO_WEBHOOK_MAX_REPORTS", "30"))
+    count = await ingestion_manager.ingest_ngo_reports_once(max_reports=max_reports)
+    return {
+        "status": "ok",
+        "ingested": count,
+        "source": payload.source,
+        "changed_url": payload.changed_url,
+    }
+
+
+@app.post("/api/v1/ingestion/documents/jsonl")
+async def ingest_documents_from_jsonl(
+    payload: DocumentJsonlIngestRequest,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
+):
+    """On-demand document-intelligence enqueue from Scrapy JSONL output."""
+    try:
+        count = await ingestion_manager.ingest_document_jsonl_once(
+            file_path=payload.file_path,
+            max_documents=payload.max_documents,
+        )
+        return {
+            "status": "ok",
+            "enqueued": count,
+            "file_path": payload.file_path,
+            "max_documents": payload.max_documents,
+            "requested_by": current_user.uid,
+        }
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("Document JSONL ingestion failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Document JSONL ingestion failed")
+
+
+@app.post("/api/v1/ingestion/documents/jsonl-url")
+async def ingest_documents_from_jsonl_url(
+    payload: DocumentJsonlUrlIngestRequest,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
+):
+    """On-demand document-intelligence enqueue from remotely hosted Scrapy JSONL output."""
+    try:
+        count = await ingestion_manager.ingest_document_jsonl_url_once(
+            jsonl_url=payload.jsonl_url,
+            max_documents=payload.max_documents,
+        )
+        return {
+            "status": "ok",
+            "enqueued": count,
+            "jsonl_url": payload.jsonl_url,
+            "max_documents": payload.max_documents,
+            "requested_by": current_user.uid,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=exc.response.status_code, detail="Failed to fetch JSONL URL")
+    except Exception as exc:
+        logger.error("Document JSONL URL ingestion failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Document JSONL URL ingestion failed")
+
 @app.put("/api/v1/profile/update")
 def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(get_current_user_token)):
     """
@@ -203,9 +332,12 @@ def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(ge
     try:
         user_ref = db.collection("users").document(uid)
         update_data = {
-            "name": profile.name,
             "updated_at": firestore.SERVER_TIMESTAMP,
         }
+
+        # Add required/optional fields only when provided.
+        if profile.name is not None:
+            update_data["name"] = profile.name
         
         # Add optional fields if provided
         if profile.phone is not None:
@@ -218,6 +350,9 @@ def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(ge
             update_data["organization_id"] = profile.organization_id
         if profile.is_available is not None:
             update_data["is_available"] = profile.is_available
+
+        if len(update_data) == 1:
+            raise HTTPException(status_code=400, detail="No profile fields provided for update")
             
         user_ref.update(update_data)
         
