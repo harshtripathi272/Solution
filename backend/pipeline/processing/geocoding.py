@@ -25,8 +25,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +63,14 @@ _GOOGLE_TYPE_TO_ADMIN = {
     "country":                     ("country",  0.30),
 }
 
-# Bias all queries toward India to avoid ambiguous results
+# India-context bias
 _INDIA_REGION_BIAS = "IN"
 _INDIA_STRICT_COMPONENT = {"country": "IN"}
+
+# Nominatim Config
+_NOMINATIM_ENDPOINT = "https://nominatim.openstreetmap.org/search"
+_NOMINATIM_USER_AGENT = "SevaSetu-Crisis-Response/1.0 (contact@sevasetu.org)"
+_NOMINATIM_RATE_LIMIT_S = 1.1  # Stay safe at > 1 second
 
 
 # Geocoder class
@@ -71,23 +79,29 @@ class GeocodingService:
 
     def __init__(self) -> None:
         self._client = None
-        self._enabled = False
+        self._use_nominatim = False
+        self._last_nominatim_call = 0.0
+        self._enabled = True  # Always enabled now (falls back to Nominatim)
         self._init_client()
 
     def _init_client(self) -> None:
         api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
         if not api_key:
-            logger.info("[Geocoder] GOOGLE_MAPS_API_KEY not set — geocoding disabled.")
+            logger.info("[Geocoder] GOOGLE_MAPS_API_KEY not set — using Nominatim fallback.")
+            self._use_nominatim = True
             return
+        
         if not _GMAPS_AVAILABLE:
-            logger.warning("[Geocoder] googlemaps package not installed — geocoding disabled.")
+            logger.warning("[Geocoder] googlemaps package not installed — using Nominatim fallback.")
+            self._use_nominatim = True
             return
+
         try:
             self._client = googlemaps.Client(key=api_key)
-            self._enabled = True
             logger.info("[Geocoder] Google Maps geocoding ready.")
         except Exception as exc:
-            logger.error("[Geocoder] Failed to init Maps client: %s", exc)
+            logger.error("[Geocoder] Failed to init Maps client: %s. Using Nominatim.", exc)
+            self._use_nominatim = True
 
     # Public API
     async def geocode(
@@ -107,15 +121,89 @@ class GeocodingService:
 
         for place in places:
             query = f"{place}, {country_hint}"
-            result = await asyncio.get_event_loop().run_in_executor(
-                None, self._resolve_sync, query
-            )
+            
+            if self._use_nominatim:
+                result = await self._resolve_nominatim_async(query)
+            else:
+                result = await asyncio.get_event_loop().run_in_executor(
+                    None, self._resolve_sync, query
+                )
+
             if result:
                 return result
 
         return None
 
-    # Helpers
+    # Resolvers
+    async def _resolve_nominatim_async(self, query: str) -> Optional[GeoResult]:
+        """Asynchronous geocoding via Nominatim (OSM)."""
+        # Rate limiting
+        now = time.time()
+        elapsed = now - self._last_nominatim_call
+        if elapsed < _NOMINATIM_RATE_LIMIT_S:
+            await asyncio.sleep(_NOMINATIM_RATE_LIMIT_S - elapsed)
+        
+        self._last_nominatim_call = time.time()
+
+        params = {
+            "q": query,
+            "format": "json",
+            "addressdetails": 1,
+            "limit": 1,
+            "countrycodes": "in", # Bias to India
+        }
+        headers = {"User-Agent": _NOMINATIM_USER_AGENT}
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(_NOMINATIM_ENDPOINT, params=params, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+        except Exception as exc:
+            logger.warning("[Geocoder] Nominatim call failed for '%s': %s", query, exc)
+            return None
+
+        if not data:
+            logger.debug("[Geocoder] No Nominatim results for '%s'", query)
+            return None
+
+        result = data[0]
+        lat = float(result.get("lat", 0.0))
+        lon = float(result.get("lon", 0.0))
+        
+        if lat == 0.0 and lon == 0.0:
+            return None
+
+        # Determine admin level from Nominatim's address dict
+        address = result.get("address", {})
+        admin_level, confidence = self._mapping_nominatim_admin(address)
+
+        resolved_name = result.get("display_name", query)
+        logger.debug(
+            "[Geocoder] Nominatim Resolved '%s' → (%.5f, %.5f) [%s, conf=%.2f]",
+            query, lat, lon, admin_level, confidence,
+        )
+        return GeoResult(
+            lat=lat,
+            lon=lon,
+            admin_level=admin_level,
+            resolved_name=resolved_name,
+            confidence=confidence,
+        )
+
+    @staticmethod
+    def _mapping_nominatim_admin(address: Dict[str, Any]) -> Tuple[str, float]:
+        """Maps Nominatim address components to internal admin levels."""
+        # Finest to coarsest
+        if any(k in address for k in ["village", "town", "hamlet", "suburb", "neighbourhood", "city_district"]):
+            return "block", 0.85
+        if any(k in address for k in ["city", "municipality"]):
+            return "block", 0.80
+        if any(k in address for k in ["county", "district", "state_district"]):
+            return "district", 0.65
+        if "state" in address:
+            return "state", 0.50
+        return "country", 0.30
     def _resolve_sync(self, query: str) -> Optional[GeoResult]:
         """Synchronous geocoding call — run via executor, do not call directly."""
         try:

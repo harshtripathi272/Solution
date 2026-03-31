@@ -64,10 +64,10 @@ async def run() -> None:
     unified_pipeline.start()
 
     paragraph = (
-        "In Rampur district, Uttar Pradesh, several villages reported severe drinking water "
-        "shortages this week after hand pumps ran dry. Local health workers observed a rise "
-        "in dehydration among children and elderly residents, and requested emergency water "
-        "tankers and temporary community filtration units."
+        "In Gaya district, Bihar, several villages are facing a combination of water scarcity "
+        "and food shortages due to prolonged dry conditions. Nearly 600 households are affected, "
+        "with reports of malnutrition among children and increasing migration of laborers. "
+        "Urgent interventions include water supply, food aid, and livelihood support."
     )
 
     if not os.getenv("NVIDIA_API_KEY"):

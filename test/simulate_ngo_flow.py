@@ -59,7 +59,7 @@ async def run_simulation():
     # Using a known tiny 1-page PDF for maximum speed
     synthetic_report = {
         "source_org": "Sphere India",
-        "pdf_url": "https://www.actionaidindia.org/wp-content/uploads/2018/06/Public-Park-Survey-Report_pdf.pdf", # Known small sitrep
+        "pdf_url": "https://www.actionaidindia.org/wp-content/uploads/2025/07/Information-Asymmetry-and-Digital-Divide-During-the-Pandemic-I-Report-I-Final.pdf", # Known small sitrep
         "published_on": "2024-03-30",
         "snippet": "Public parks in Delhi"
     }

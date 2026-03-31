@@ -77,7 +77,7 @@ class GeminiExtractor:
     - key env: NVIDIA_API_KEY
     """
 
-    _MODEL_NAME = "stepfun-ai/step-3.5-flash"
+    _MODEL_NAME = "moonshotai/kimi-k2-thinking"
     _MAX_TEXT_LEN = 1500
     _MAX_PDF_MB = 20
     _MAX_PDF_TEXT_LEN = 12000
@@ -87,12 +87,12 @@ class GeminiExtractor:
         self._client: OpenAI | None = None
         self._model_name = os.getenv("DOC_STREAM_LLM_MODEL", self._MODEL_NAME).strip() or self._MODEL_NAME
         self._max_pdf_mb = int(os.getenv("DOC_STREAM_MAX_PDF_MB", str(self._MAX_PDF_MB)))
-        self._request_timeout_s = float(os.getenv("DOC_STREAM_LLM_TIMEOUT_SECONDS", "45"))
+        self._request_timeout_s = float(os.getenv("DOC_STREAM_LLM_TIMEOUT_SECONDS", "90"))
         self._connect_timeout_s = float(os.getenv("DOC_STREAM_LLM_CONNECT_TIMEOUT_SECONDS", "10"))
         self._max_retries = int(os.getenv("DOC_STREAM_LLM_MAX_RETRIES", "1"))
         self._thinking_enabled = os.getenv("DOC_STREAM_LLM_THINKING", "false").strip().lower() == "true"
-        self._max_tokens_text = int(os.getenv("DOC_STREAM_LLM_MAX_TOKENS_TEXT", "400"))
-        self._max_tokens_pdf = int(os.getenv("DOC_STREAM_LLM_MAX_TOKENS_PDF", "1200"))
+        self._max_tokens_text = int(os.getenv("DOC_STREAM_LLM_MAX_TOKENS_TEXT", "1024"))
+        self._max_tokens_pdf = int(os.getenv("DOC_STREAM_LLM_MAX_TOKENS_PDF", "2048"))
         self._semaphore = asyncio.Semaphore(3) # Limit concurrent AI calls to prevent 504s
         self._init_client()
 
@@ -213,17 +213,33 @@ class GeminiExtractor:
         def _sync_call() -> Any:
             kwargs: dict[str, Any] = {
                 "model": self._model_name,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a strict information extraction engine. "
+                            "Return only one valid JSON object. "
+                            "Do not include reasoning, analysis, markdown, or instruction text."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
                 "temperature": 0.2,
                 "top_p": 0.95,
                 "max_tokens": max_tokens,
                 "stream": False,
+                "response_format": {"type": "json_object"},
             }
-            if self._thinking_enabled:
-                kwargs["extra_body"] = {"chat_template_kwargs": {"thinking": True}}
-            return self._client.chat.completions.create(
-                **kwargs,
-            )
+            # Explicitly set thinking in all cases; reasoning models may default to enabled.
+            kwargs["extra_body"] = {"chat_template_kwargs": {"thinking": self._thinking_enabled}}
+            try:
+                return self._client.chat.completions.create(**kwargs)
+            except Exception as exc:
+                # Some providers/models may not support response_format.
+                if "response_format" not in str(exc).lower():
+                    raise
+                kwargs.pop("response_format", None)
+                return self._client.chat.completions.create(**kwargs)
 
         try:
             async with self._semaphore:
@@ -248,8 +264,9 @@ class GeminiExtractor:
             return ""
 
         content = getattr(message, "content", "")
-        if isinstance(content, str):
+        if isinstance(content, str) and content.strip():
             return content
+
         if isinstance(content, list):
             parts: list[str] = []
             for item in content:
@@ -259,10 +276,15 @@ class GeminiExtractor:
                 text_attr = getattr(item, "text", None)
                 if isinstance(text_attr, str):
                     parts.append(text_attr)
-            return "\n".join(parts)
+            if parts:
+                return "\n".join(parts)
+
+        # Only use reasoning_content if content is completely empty
         reasoning = getattr(message, "reasoning_content", None)
         if isinstance(reasoning, str) and reasoning.strip():
+            logger.debug("[UnifiedExtractor] Falling back to reasoning_content")
             return reasoning
+
         return str(content or "")
 
     @staticmethod
@@ -271,46 +293,74 @@ class GeminiExtractor:
         if not cleaned:
             return None
 
+        # Strip chain-of-thought blocks emitted by some reasoning models.
+        cleaned = re.sub(r"<think>[\s\S]*?</think>", "", cleaned, flags=re.IGNORECASE).strip()
+        if "</think>" in cleaned:
+            cleaned = cleaned.split("</think>")[-1].strip()
+
         # Some models prepend labels like "JSON:" before the object.
         cleaned = re.sub(r"^\s*json\s*:\s*", "", cleaned, flags=re.IGNORECASE)
+
+        # If prose remains, trim everything before the first opening brace.
+        first_brace = cleaned.find("{")
+        if first_brace > 0:
+            cleaned = cleaned[first_brace:]
 
         try:
             data = json.loads(cleaned)
             return data if isinstance(data, dict) else None
         except json.JSONDecodeError:
-            match = re.search(r"\{[\s\S]*\}", cleaned)
-            if not match:
-                logger.warning("[UnifiedExtractor] JSON parse failed. Raw head: %s", cleaned[:240])
-                return None
-            try:
-                data = json.loads(match.group())
-                return data if isinstance(data, dict) else None
-            except json.JSONDecodeError:
-                # Fallback for python-style dict responses using single quotes.
+            # Extract top-level {...} candidates and prefer the last one.
+            candidates: list[str] = []
+            depth = 0
+            start = -1
+            for i, ch in enumerate(cleaned):
+                if ch == "{":
+                    if depth == 0:
+                        start = i
+                    depth += 1
+                elif ch == "}":
+                    if depth > 0:
+                        depth -= 1
+                        if depth == 0 and start >= 0:
+                            candidates.append(cleaned[start:i + 1])
+
+            for candidate in reversed(candidates):
                 try:
-                    obj = ast.literal_eval(match.group())
-                    return obj if isinstance(obj, dict) else None
-                except Exception:
-                    logger.warning("[UnifiedExtractor] JSON parse fallback failed. Raw head: %s", cleaned[:240])
-                    return None
+                    data = json.loads(candidate)
+                    if isinstance(data, dict):
+                        return data
+                except json.JSONDecodeError:
+                    try:
+                        obj = ast.literal_eval(candidate)
+                        if isinstance(obj, dict):
+                            return obj
+                    except Exception:
+                        continue
+
+            logger.warning("[UnifiedExtractor] JSON parse failed after cleanup. Raw head (500 chars): %s", cleaned[:500])
+            return None
 
     def _build_text_prompt(self, text: str) -> str:
         return f"""\
-You are a humanitarian data extraction assistant.
-Analyze the India-focused crisis text below and return ONLY JSON.
+Extract structured humanitarian crisis data from the India-focused text below.
+Output exactly one valid JSON object only.
 
-Schema:
+Required JSON schema:
 {{
-  "places": ["<most specific place>", "<district>", "<state>"],
-  "need_type": "<one of medical|water_sanitation|food|shelter|education|protection|livelihood|other>",
-  "severity": "<one of critical|high|moderate|low>",
-  "confidence": <float 0.0-1.0>
+    "places": ["most_specific_place", "district", "state"],
+    "need_types": ["one or more of medical|water_sanitation|food|shelter|education|protection|livelihood|other"],
+    "severity": "critical|high|moderate|low",
+    "confidence": 0.0
 }}
 
 Rules:
 - Use real Indian place names only.
 - If uncertain, keep conservative confidence.
-- No markdown, no explanation, JSON only.
+- Identify ALL relevant need_types (e.g. if both food and water are mentioned, include both).
+- `confidence` must be a number between 0 and 1.
+- Do not repeat schema, rules, or the input text.
+- No markdown, no explanation, no XML tags, JSON only.
 
 Text:
 {text}
@@ -319,10 +369,11 @@ Text:
     def _build_pdf_prompt(self, source_org: str, pdf_url: str, text_hint: str, extracted_pdf_text: str) -> str:
         return f"""\
 You are extracting structured humanitarian intelligence from NGO reports in India.
+Identify ALL relevant needs mentioned.
 Return ONLY valid JSON and follow this schema exactly:
 {{
   "places": ["village/block/district/state mentions"],
-  "need_type": "one of medical|water_sanitation|food|shelter|education|protection|livelihood|other",
+  "need_types": ["one or more of medical|water_sanitation|food|shelter|education|protection|livelihood|other"],
   "severity_score": 1,
   "severity": "critical|high|moderate|low",
   "confidence": 0.0,
@@ -408,7 +459,14 @@ PDF extracted text (truncated):
         source_excerpt_fallback: str = "",
     ) -> UnifiedExtractionResult:
         places = self._normalize_list(payload.get("places")) or self._normalize_list(payload.get("locations"))
-        need_type = self._normalize_need_type(str(payload.get("need_type", "other")))
+        
+        # Handle multiple need_types
+        raw_needs = payload.get("need_types") or payload.get("need_type") or "other"
+        if isinstance(raw_needs, list):
+            need_type = ", ".join(self._normalize_need_type(str(n)) for n in raw_needs if n)
+        else:
+            need_type = self._normalize_need_type(str(raw_needs))
+            
         severity = self._normalize_severity(
             raw_label=str(payload.get("severity", "")),
             raw_score=payload.get("severity_score"),

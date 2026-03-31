@@ -28,7 +28,7 @@ from typing import Optional
 
 from pipeline.core.pubsub import broker
 from pipeline.core.schemas import UnifiedIngestionEvent, to_crisis_event, FALLBACK_INDIA_LAT, FALLBACK_INDIA_LON
-from pipeline.processing.ner import ner_extractor
+from pipeline.processing.extraction_strategy import extraction_strategy_router
 from pipeline.processing.geocoding import geocoding_service
 from pipeline.processing.geohash import encode as geohash_encode
 from pipeline.processing.aggregation import aggregation_layer
@@ -76,27 +76,41 @@ class UnifiedPipeline:
     async def _process(self, event: UnifiedIngestionEvent) -> None:
         logger.info("[UnifiedPipeline] Processing event %s from %s", event.id, event.source)
 
-        # Step 1 — NER (unstructured sources / needs refinement only)
+        # Step 1 — Intelligent Extraction Strategy (pattern matching → NER as fallback)
+        # This router decides per-ingestor whether to:
+        #   - Skip entirely (GDACS/NDMA have all data)
+        #   - Use fast pattern matching (cheap, handles 80% of cases)
+        #   - Fall back to NVIDIA NER (expensive, for ambiguous/unstructured text)
         ner_places: list[str] = []
-        is_official = _infer_source_tier(event.source) == 1
-        has_coords = abs(event.location.latitude) > 0.1 or abs(event.location.longitude) > 0.1
-        
-        # Optimization: Skip NER for official alerts that already have valid coordinates
-        # and don't explicitly need geocoding refinement.
-        should_run_ner = event.needs_geocoding and (not is_official or not has_coords)
 
-        if should_run_ner:
-            ner_result = await ner_extractor.extract(event.description)
-            if ner_result:
-                ner_places = ner_result.places or []
-                # Upgrade need_type and severity if NER is more confident
-                if ner_result.need_type and ner_result.confidence >= event.confidence_score:
-                    event = event.model_copy(update={"need_type": ner_result.need_type})
-                if ner_result.severity and ner_result.confidence >= event.confidence_score:
-                    event = event.model_copy(update={"severity": ner_result.severity})
-        else:
-            if event.needs_geocoding:
-                logger.debug("[UnifiedPipeline] Skipping NER for %s (Tier 1 + has coords)", event.id)
+        if event.needs_geocoding:
+            extraction_result = await extraction_strategy_router.extract_with_strategy(event)
+            
+            if extraction_result:
+                # Apply extracted need_type/severity if more confident
+                if extraction_result.get("need_type") and \
+                   extraction_result.get("confidence_score", 0.5) >= event.confidence_score:
+                    event = event.model_copy(update={"need_type": extraction_result["need_type"]})
+                
+                if extraction_result.get("severity") and \
+                   extraction_result.get("confidence_score", 0.5) >= event.confidence_score:
+                    event = event.model_copy(update={"severity": extraction_result["severity"]})
+                
+                # Extract places for geocoding
+                ner_places = extraction_result.get("places") or []
+                
+                logger.info(
+                    "[UnifiedPipeline] Extracted %s/%s (places=%d) for %s via strategy",
+                    extraction_result.get("need_type"),
+                    extraction_result.get("severity"),
+                    len(ner_places),
+                    event.id,
+                )
+            else:
+                logger.debug(
+                    "[UnifiedPipeline] No extraction result for %s (pattern/NER skipped)",
+                    event.id
+                )
 
         # Step 2 — Geocoding
         geo_result = None
