@@ -351,7 +351,11 @@ Required JSON schema:
     "places": ["most_specific_place", "district", "state"],
     "need_types": ["one or more of medical|water_sanitation|food|shelter|education|protection|livelihood|other"],
     "severity": "critical|high|moderate|low",
-    "confidence": 0.0
+    "confidence": 0.0,
+    "infrastructure_damage_score": 0.0,
+    "road_accessibility_risk": 0.0,
+    "water_access_severity": 3,
+    "health_service_severity": 3
 }}
 
 Rules:
@@ -381,6 +385,12 @@ Return ONLY valid JSON and follow this schema exactly:
   "recommended_interventions": ["actionable intervention"],
   "seasonal_urgency": "pre-monsoon|monsoon|post-monsoon|harvest|summer|winter|none",
   "vulnerable_groups": ["women|children|elderly|disabled|tribal|other"],
+  "infrastructure_damage_score": 0.0,
+  "road_accessibility_risk": 0.3,
+  "security_constraint_risk": 0.2,
+  "water_access_severity": 3,
+  "food_security_severity": 3,
+  "health_service_severity": 3,
   "infrastructure_gaps": [
     {{"type": "water|health|roads|shelter|sanitation|education|other", "status": "damaged|missing|insufficient|functional", "count": 0}}
   ],
@@ -597,5 +607,6 @@ PDF extracted text (truncated):
 
 
 # Global singletons
-nvidia_extractor = GeminiExtractor()
+gemini_extractor = GeminiExtractor()
+nvidia_extractor = gemini_extractor  # Alias for newer code
 

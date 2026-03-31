@@ -81,6 +81,7 @@ class GeocodingService:
         self._client = None
         self._use_nominatim = False
         self._last_nominatim_call = 0.0
+        self._nominatim_lock = asyncio.Lock()
         self._enabled = True  # Always enabled now (falls back to Nominatim)
         self._init_client()
 
@@ -137,31 +138,46 @@ class GeocodingService:
     # Resolvers
     async def _resolve_nominatim_async(self, query: str) -> Optional[GeoResult]:
         """Asynchronous geocoding via Nominatim (OSM)."""
-        # Rate limiting
-        now = time.time()
-        elapsed = now - self._last_nominatim_call
-        if elapsed < _NOMINATIM_RATE_LIMIT_S:
-            await asyncio.sleep(_NOMINATIM_RATE_LIMIT_S - elapsed)
-        
-        self._last_nominatim_call = time.time()
+        # Nominatim should be called serially and rate-limited to avoid 429 bursts.
+        async with self._nominatim_lock:
+            # Rate limiting
+            now = time.time()
+            elapsed = now - self._last_nominatim_call
+            if elapsed < _NOMINATIM_RATE_LIMIT_S:
+                await asyncio.sleep(_NOMINATIM_RATE_LIMIT_S - elapsed)
 
-        params = {
-            "q": query,
-            "format": "json",
-            "addressdetails": 1,
-            "limit": 1,
-            "countrycodes": "in", # Bias to India
-        }
-        headers = {"User-Agent": _NOMINATIM_USER_AGENT}
+            params = {
+                "q": query,
+                "format": "json",
+                "addressdetails": 1,
+                "limit": 1,
+                "countrycodes": "in", # Bias to India
+            }
+            headers = {"User-Agent": _NOMINATIM_USER_AGENT}
 
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(_NOMINATIM_ENDPOINT, params=params, headers=headers)
-                response.raise_for_status()
-                data = response.json()
-        except Exception as exc:
-            logger.warning("[Geocoder] Nominatim call failed for '%s': %s", query, exc)
-            return None
+            data = None
+            max_attempts = 3
+            backoff = 1.2
+            for attempt in range(1, max_attempts + 1):
+                self._last_nominatim_call = time.time()
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        response = await client.get(_NOMINATIM_ENDPOINT, params=params, headers=headers)
+                        response.raise_for_status()
+                        data = response.json()
+                        break
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 429 and attempt < max_attempts:
+                        await asyncio.sleep(backoff * attempt)
+                        continue
+                    logger.warning("[Geocoder] Nominatim HTTP error for '%s': %s", query, exc)
+                    return None
+                except Exception as exc:
+                    logger.warning("[Geocoder] Nominatim call failed for '%s': %s", query, exc)
+                    return None
+
+            if data is None:
+                return None
 
         if not data:
             logger.debug("[Geocoder] No Nominatim results for '%s'", query)

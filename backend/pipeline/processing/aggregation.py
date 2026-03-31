@@ -98,13 +98,13 @@ class AggregationLayer:
           merged_score : float → weighted score to persist
         """
         # 1. Compute deterministic dedup key
-        dedup_hash = self._make_dedup_hash(source, geohash, need_type, timestamp)
-        if self._is_duplicate(dedup_hash, timestamp):
-            logger.debug("[Aggregation] Duplicate event skipped: key=%s", dedup_hash)
+        dedup_hashes = self._make_dedup_hashes(source, geohash, need_type, timestamp)
+        if self._is_duplicate(dedup_hashes, timestamp):
+            logger.debug("[Aggregation] Duplicate event skipped: keys=%s", dedup_hashes)
             return (True, 0.0)
 
         # 2. Register as seen
-        self._register(dedup_hash, timestamp)
+        self._register(dedup_hashes, timestamp)
 
         # 3. Compute incoming score
         incoming = self.event_score(severity, confidence)
@@ -128,31 +128,50 @@ class AggregationLayer:
 
     # Dedup helpers
     @staticmethod
-    def _make_dedup_hash(source: str, geohash: str, need_type: str, ts: datetime) -> str:
+    def _make_dedup_hashes(source: str, geohash: str, need_type: str, ts: datetime) -> list[str]:
         date_str = ts.strftime("%Y-%m-%d")
-        raw = f"{source}|{geohash}|{need_type}|{date_str}"
-        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+        geohashes = [geohash, *AggregationLayer._adjacent_geohashes(geohash)]
+        hashes: list[str] = []
+        for gh in geohashes:
+            raw = f"{source}|{gh}|{need_type}|{date_str}"
+            hashes.append(hashlib.sha256(raw.encode()).hexdigest()[:16])
+        # Keep deterministic order and remove duplicates.
+        return list(dict.fromkeys(hashes))
+
+    @staticmethod
+    def _adjacent_geohashes(geohash: str) -> list[str]:
+        if not geohash:
+            return []
+        try:
+            from pipeline.processing.geohash import neighbours
+            return neighbours(geohash)
+        except Exception:
+            return []
 
     def _dedup_key(self, dedup_hash: str, ts: datetime) -> str:
         date_str = ts.strftime("%Y-%m-%d")
         return f"{_DEDUP_KEY_PREFIX}:{date_str}:{dedup_hash}"
 
-    def _is_duplicate(self, dedup_hash: str, ts: datetime) -> bool:
+    def _is_duplicate(self, dedup_hashes: list[str], ts: datetime) -> bool:
         if not self._redis:
             return False   # can't check — allow through
         try:
-            key = self._dedup_key(dedup_hash, ts)
-            return bool(self._redis.exists(key))
+            for dedup_hash in dedup_hashes:
+                key = self._dedup_key(dedup_hash, ts)
+                if self._redis.exists(key):
+                    return True
+            return False
         except Exception as exc:
             logger.warning("[Aggregation] Dedup check failed: %s", exc)
             return False
 
-    def _register(self, dedup_hash: str, ts: datetime) -> None:
+    def _register(self, dedup_hashes: list[str], ts: datetime) -> None:
         if not self._redis:
             return
         try:
-            key = self._dedup_key(dedup_hash, ts)
-            self._redis.set(key, "1", ex=_DEDUP_TTL_SECONDS)
+            for dedup_hash in dedup_hashes:
+                key = self._dedup_key(dedup_hash, ts)
+                self._redis.set(key, "1", ex=_DEDUP_TTL_SECONDS)
         except Exception as exc:
             logger.warning("[Aggregation] Dedup register failed: %s", exc)
 

@@ -61,6 +61,21 @@ def test_acute_score_within_bounds() -> None:
     assert score > 0.45
 
 
+def test_population_fallback_fix() -> None:
+    # Event with NO district_population in metadata
+    event = _make_event(
+        population_affected=1000,
+        metadata={"affected_area_km2": 0, "infrastructure_damage_score": 0}
+    )
+    # Remove district_population from metadata
+    event.metadata.pop("district_population", None)
+    
+    score = calculate_acute_severity(event)
+    # Impact score should be (0 + (1000/500000) + 0) / 3 = 0.00066
+    # Total score should be low, NOT 1.0 (which happened before the fix)
+    assert score < 0.3
+
+
 def test_chronic_decay_reduces_old_reports() -> None:
     older_ts = datetime.now(timezone.utc) - timedelta(days=120)
     recent_ts = datetime.now(timezone.utc) - timedelta(days=2)
