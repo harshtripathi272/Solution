@@ -28,6 +28,131 @@ REGION_CENTRES: dict[str, tuple[float, float]] = {
     "marathwada": (19.7515, 75.7139),
 }
 
+REGION_BOUNDARY_FEATURES: list[dict[str, Any]] = [
+    {
+        "type": "Feature",
+        "properties": {
+            "region_id": "bihar",
+            "name": "Bihar",
+        },
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [83.40, 24.00],
+                    [84.55, 24.15],
+                    [86.20, 24.10],
+                    [87.60, 25.15],
+                    [88.20, 26.35],
+                    [87.30, 27.30],
+                    [85.95, 27.45],
+                    [84.30, 26.65],
+                    [83.55, 25.55],
+                    [83.40, 24.00],
+                ]
+            ],
+        },
+    },
+    {
+        "type": "Feature",
+        "properties": {
+            "region_id": "jharkhand",
+            "name": "Jharkhand",
+        },
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [83.20, 21.90],
+                    [84.85, 22.00],
+                    [86.55, 22.20],
+                    [87.90, 23.35],
+                    [87.80, 24.80],
+                    [86.80, 25.40],
+                    [85.00, 25.30],
+                    [83.70, 24.60],
+                    [83.30, 23.10],
+                    [83.20, 21.90],
+                ]
+            ],
+        },
+    },
+    {
+        "type": "Feature",
+        "properties": {
+            "region_id": "assam",
+            "name": "Assam",
+        },
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [89.80, 24.10],
+                    [91.00, 24.30],
+                    [92.60, 24.60],
+                    [94.10, 25.00],
+                    [95.60, 26.00],
+                    [96.10, 27.20],
+                    [95.00, 27.80],
+                    [93.40, 27.50],
+                    [91.60, 27.20],
+                    [90.20, 26.30],
+                    [89.80, 25.00],
+                    [89.80, 24.10],
+                ]
+            ],
+        },
+    },
+    {
+        "type": "Feature",
+        "properties": {
+            "region_id": "bundelkhand",
+            "name": "Bundelkhand",
+        },
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [78.10, 23.30],
+                    [79.50, 23.40],
+                    [80.80, 23.80],
+                    [81.80, 24.60],
+                    [81.90, 25.80],
+                    [81.20, 26.50],
+                    [79.80, 26.40],
+                    [78.60, 25.80],
+                    [78.10, 24.80],
+                    [78.10, 23.30],
+                ]
+            ],
+        },
+    },
+    {
+        "type": "Feature",
+        "properties": {
+            "region_id": "marathwada",
+            "name": "Marathwada",
+        },
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [74.90, 17.20],
+                    [75.90, 17.00],
+                    [77.20, 17.20],
+                    [78.40, 18.00],
+                    [78.60, 19.20],
+                    [78.00, 20.10],
+                    [76.80, 20.50],
+                    [75.40, 20.20],
+                    [74.90, 19.00],
+                    [74.90, 17.20],
+                ]
+            ],
+        },
+    },
+]
+
 SEVERITY_CLASSES = (
     (0.8, "Extreme"),
     (0.6, "Severe"),
@@ -155,8 +280,7 @@ async def _fetch_firestore_points(
 
         lat = payload.get("centroid_lat")
         lon = payload.get("centroid_lon")
-        need_scores = payload.get("need_scores") or {}
-        if lat is None or lon is None or not isinstance(need_scores, dict):
+        if lat is None or lon is None:
             continue
 
         latest_event = await _get_latest_event_payload(doc.id, payload.get("latest_event_id"))
@@ -165,20 +289,56 @@ async def _fetch_firestore_points(
         latest_source = str((latest_event or {}).get("source") or payload.get("latest_event_source") or "firestore")
         latest_timestamp = _coerce_timestamp((latest_event or {}).get("timestamp") or payload.get("last_updated"))
 
-        for need_type, raw_score in need_scores.items():
-            need_type_norm = str(need_type).strip().lower()
-            if need_types and need_type_norm not in need_types:
+        # Support two schemas:
+        # 1. New schema: single composite_urgency score + dominant_need (current Firestore structure)
+        # 2. Old schema: need_scores map with individual need types
+        need_scores = payload.get("need_scores") or {}
+        
+        if isinstance(need_scores, dict) and need_scores:
+            # Old schema: iterate over need_scores map
+            for need_type, raw_score in need_scores.items():
+                need_type_norm = str(need_type).strip().lower()
+                if need_types and need_type_norm not in need_types:
+                    continue
+
+                score = float(raw_score or 0.0)
+                if score <= min_severity:
+                    continue
+
+                points.append(
+                    HeatPoint(
+                        lat=float(lat),
+                        lon=float(lon),
+                        severity=max(0.0, min(1.0, score)),
+                        need_type=need_type_norm,
+                        population_affected=max(0, latest_population),
+                        confidence=max(0.0, min(1.0, latest_confidence)),
+                        timestamp=latest_timestamp,
+                        source=latest_source,
+                    )
+                )
+        else:
+            # New schema: use composite_urgency as single severity score
+            composite_urgency = float(payload.get("composite_urgency") or 0.0)
+            if composite_urgency <= min_severity:
                 continue
 
-            score = float(raw_score or 0.0)
-            if score <= min_severity:
+            # Extract dominant need type or use field from payload
+            dominant_need = payload.get("dominant_need", "general_need")
+            if isinstance(dominant_need, str):
+                # Handle comma-separated need types, extract first one
+                need_type_norm = dominant_need.split(",")[0].strip().lower()
+            else:
+                need_type_norm = "general_need"
+
+            if need_types and need_type_norm not in need_types:
                 continue
 
             points.append(
                 HeatPoint(
                     lat=float(lat),
                     lon=float(lon),
-                    severity=max(0.0, min(1.0, score)),
+                    severity=max(0.0, min(1.0, composite_urgency)),
                     need_type=need_type_norm,
                     population_affected=max(0, latest_population),
                     confidence=max(0.0, min(1.0, latest_confidence)),
@@ -309,7 +469,12 @@ def _aggregate_points(points: list[HeatPoint]) -> tuple[list[dict[str, Any]], in
         count = max(1, int(bucket["count"]))
         severity_avg = max(0.0, min(1.0, bucket["severity_sum"] / count))
         confidence_avg = max(0.0, min(1.0, bucket["confidence_sum"] / count))
-        dominant_need = max(bucket["need_counts"], key=bucket["need_counts"].get)
+        
+        # Find dominant need type, default to first if no counts
+        if bucket["need_counts"]:
+            dominant_need = max(bucket["need_counts"], key=bucket["need_counts"].get)
+        else:
+            dominant_need = "general_need"
 
         features.append(
             {
@@ -401,6 +566,40 @@ async def get_heatmap_data(
     }
 
     response.headers["Cache-Control"] = "public, max-age=300"
+    response.headers["ETag"] = _build_etag(payload)
+    response.headers["Last-Modified"] = now.strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+    return payload
+
+
+@router.get("/region-boundaries")
+async def get_region_boundaries(
+    response: Response,
+    region: str | None = Query(default=None),
+    _: Any = Depends(RoleChecker([UserRole.coordinator, UserRole.ngo_worker])),
+):
+    now = datetime.now(timezone.utc)
+    requested_region = (region or "").strip().lower()
+
+    if requested_region:
+        features = [
+            feature
+            for feature in REGION_BOUNDARY_FEATURES
+            if str(feature.get("properties", {}).get("region_id", "")).lower() == requested_region
+        ]
+    else:
+        features = REGION_BOUNDARY_FEATURES
+
+    payload = {
+        "type": "FeatureCollection",
+        "features": features,
+        "metadata": {
+            "generated_at": now.isoformat(),
+            "feature_count": len(features),
+        },
+    }
+
+    response.headers["Cache-Control"] = "public, max-age=3600"
     response.headers["ETag"] = _build_etag(payload)
     response.headers["Last-Modified"] = now.strftime("%a, %d %b %Y %H:%M:%S GMT")
 

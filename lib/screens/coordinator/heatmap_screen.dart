@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_heatmap/flutter_map_heatmap.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:multi_select_flutter/multi_select_flutter.dart';
 import '../../config/theme.dart';
 import '../../models/heatmap_point.dart';
 import '../../services/heatmap_api_service.dart';
@@ -23,7 +22,7 @@ class _HeatmapScreenState extends State<HeatmapScreen>
   
   // Filter states
   String? _selectedRegion;
-  Set<String> _selectedNeedTypes = {};
+  String? _selectedNeedType;
   double _minSeverity = 0.1;
   String _timeRange = '30d';
   
@@ -52,6 +51,14 @@ class _HeatmapScreenState extends State<HeatmapScreen>
   ];
 
   final List<String> _timeRanges = ['7d', '30d', '90d'];
+
+  final Map<String, LatLng> _regionCentres = const {
+    'bihar': LatLng(25.0961, 85.3131),
+    'jharkhand': LatLng(23.6102, 85.2799),
+    'assam': LatLng(26.2006, 92.9376),
+    'bundelkhand': LatLng(25.5000, 79.5000),
+    'marathwada': LatLng(19.7515, 75.7139),
+  };
 
   @override
   bool get wantKeepAlive => true;
@@ -91,7 +98,7 @@ class _HeatmapScreenState extends State<HeatmapScreen>
     try {
       final data = await _apiService.fetchHeatmapData(
         region: _selectedRegion,
-        needType: _selectedNeedTypes.isNotEmpty ? _selectedNeedTypes.first : null,
+        needType: _selectedNeedType,
         minSeverity: _minSeverity,
         timeRange: _timeRange,
       );
@@ -101,6 +108,7 @@ class _HeatmapScreenState extends State<HeatmapScreen>
           _heatmapData = data;
           _isLoading = false;
         });
+        _fitMapToData();
       }
     } on HeatmapException catch (e) {
       if (mounted) {
@@ -119,138 +127,177 @@ class _HeatmapScreenState extends State<HeatmapScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.7,
-          minChildSize: 0.3,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) => SingleChildScrollView(
-            controller: scrollController,
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.outline,
-                        borderRadius: BorderRadius.circular(2),
+      builder: (_) {
+        var draftRegion = _selectedRegion;
+        var draftNeedType = _selectedNeedType;
+        var draftMinSeverity = _minSeverity;
+        var draftTimeRange = _timeRange;
+
+        return StatefulBuilder(
+          builder: (context, setBottomSheetState) => Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.75,
+              minChildSize: 0.3,
+              maxChildSize: 0.95,
+              builder: (context, scrollController) => SingleChildScrollView(
+                controller: scrollController,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppColors.outline,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Filter Heatmap', 
-                    style: Theme.of(context).textTheme.displaySmall),
-                  const SizedBox(height: 24),
-                  
-                  // Region filter
-                  Text('Region', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  DropdownButton<String>(
-                    isExpanded: true,
-                    value: _selectedRegion,
-                    hint: const Text('All Regions'),
-                    items: [null, ..._regions]
-                        .map((region) => DropdownMenuItem(
-                          value: region,
-                          child: Text(region?.toUpperCase() ?? 'All Regions'),
-                        ))
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() => _selectedRegion = value);
-                      Navigator.pop(context);
-                      _loadHeatmapData();
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Need types filter
-                  Text('Need Types', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  MultiSelectChipField(
-                    items: _needTypes
-                        .map((type) => MultiSelectItem(type, type.replaceAll('_', ' ').toUpperCase()))
-                        .toList(),
-                    initialValue: _selectedNeedTypes.toList(),
-                    onTap: (selectedItems) {
-                      setState(() => _selectedNeedTypes = selectedItems.cast<String>().toSet());
-                    },
-                    chipColor: AppColors.primaryContainer,
-                    selectedChipColor: AppColors.primary,
-                    textStyle: const TextStyle(color: Colors.black87),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Severity slider
-                  Text('Minimum Severity: ${(_minSeverity * 100).toStringAsFixed(0)}%',
-                    style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  Slider(
-                    value: _minSeverity,
-                    min: 0.0,
-                    max: 1.0,
-                    divisions: 10,
-                    onChanged: (value) => setState(() => _minSeverity = value),
-                    onChangeEnd: (_) => _loadHeatmapData(),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Time range filter
-                  Text('Time Range', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    children: _timeRanges.map((range) {
-                      final isSelected = _timeRange == range;
-                      return FilterChip(
-                        label: Text(range),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          if (selected) {
-                            setState(() => _timeRange = range);
+                      const SizedBox(height: 24),
+                      Text('Filter Heatmap',
+                        style: Theme.of(context).textTheme.displaySmall),
+                      const SizedBox(height: 24),
+
+                      Text('Region', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 12),
+                      DropdownButton<String>(
+                        isExpanded: true,
+                        value: draftRegion,
+                        hint: const Text('All Regions'),
+                        items: [null, ..._regions]
+                            .map((region) => DropdownMenuItem(
+                                  value: region,
+                                  child: Text(region?.toUpperCase() ?? 'All Regions'),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          setBottomSheetState(() => draftRegion = value);
+                        },
+                      ),
+                      const SizedBox(height: 24),
+
+                      Text('Need Type', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _needTypes.map((type) {
+                          final isSelected = draftNeedType == type;
+                          return ChoiceChip(
+                            label: Text(type.replaceAll('_', ' ').toUpperCase()),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              setBottomSheetState(() {
+                                draftNeedType = selected ? type : null;
+                              });
+                            },
+                            backgroundColor: AppColors.primaryContainer,
+                            selectedColor: AppColors.primary,
+                            labelStyle: TextStyle(
+                              color: isSelected ? Colors.white : Colors.black87,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 24),
+
+                      Text(
+                        'Minimum Severity: ${(draftMinSeverity * 100).toStringAsFixed(0)}%',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      Slider(
+                        value: draftMinSeverity,
+                        min: 0.0,
+                        max: 1.0,
+                        divisions: 20,
+                        label: draftMinSeverity.toStringAsFixed(2),
+                        onChanged: (value) {
+                          setBottomSheetState(() => draftMinSeverity = value);
+                        },
+                      ),
+                      const SizedBox(height: 24),
+
+                      Text('Time Range', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        children: _timeRanges.map((range) {
+                          final isSelected = draftTimeRange == range;
+                          return FilterChip(
+                            label: Text(range),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              if (!selected) return;
+                              setBottomSheetState(() => draftTimeRange = range);
+                            },
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 24),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              _selectedRegion = draftRegion;
+                              _selectedNeedType = draftNeedType;
+                              _minSeverity = draftMinSeverity;
+                              _timeRange = draftTimeRange;
+                            });
                             Navigator.pop(context);
                             _loadHeatmapData();
-                          }
-                        },
-                      );
-                    }).toList(),
+                          },
+                          child: const Text('Apply Filters'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            await _apiService.clearCache();
+                            if (!context.mounted) {
+                              return;
+                            }
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Cache cleared')),
+                            );
+                          },
+                          child: const Text('Clear Cache'),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 32),
-                  
-                  // Clear cache button
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () async {
-                        await _apiService.clearCache();
-                        if (!context.mounted) {
-                          return;
-                        }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Cache cleared')),
-                        );
-                      },
-                      child: const Text('Clear Cache'),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   List<WeightedLatLng> _transformToHeatmapDataPoints() {
-    return _heatmapData.map((point) {
+    final validPoints = _heatmapData.where((point) {
+      // Filter out invalid coordinates
+      return point.latitude != 0.0 && 
+             point.longitude != 0.0 &&
+             point.latitude >= -90 && point.latitude <= 90 &&
+             point.longitude >= -180 && point.longitude <= 180 &&
+             point.weightedIntensity > 0.0;
+    }).toList();
+    
+    return validPoints.map((point) {
       return WeightedLatLng(
         LatLng(point.latitude, point.longitude),
         point.weightedIntensity,
@@ -258,11 +305,78 @@ class _HeatmapScreenState extends State<HeatmapScreen>
     }).toList();
   }
 
+  Map<String, int> _buildRegionClusterCounts() {
+    final counts = <String, int>{
+      for (final region in _regions) region: 0,
+    };
+
+    for (final point in _heatmapData) {
+      final inferred = _inferRegionFromPoint(point);
+      if (inferred != null && counts.containsKey(inferred)) {
+        counts[inferred] = (counts[inferred] ?? 0) + 1;
+      }
+    }
+
+    return counts;
+  }
+
+  String? _inferRegionFromPoint(HeatmapPoint point) {
+    String? bestRegion;
+    double? bestDistance;
+
+    for (final entry in _regionCentres.entries) {
+      final dLat = (point.latitude - entry.value.latitude).abs();
+      final dLon = (point.longitude - entry.value.longitude).abs();
+
+      // Keep the same coarse matching window used by backend region filtering.
+      if (dLat > 4.5 || dLon > 4.5) {
+        continue;
+      }
+
+      final distance = (dLat * dLat) + (dLon * dLon);
+      if (bestDistance == null || distance < bestDistance) {
+        bestDistance = distance;
+        bestRegion = entry.key;
+      }
+    }
+
+    return bestRegion;
+  }
+
+  void _fitMapToData() {
+    if (!mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      if (_heatmapData.isEmpty) return;
+
+      if (_heatmapData.length == 1) {
+        final point = _heatmapData.first;
+        _mapController.move(LatLng(point.latitude, point.longitude), 8.0);
+        return;
+      }
+
+      final dataBounds = LatLngBounds.fromPoints(
+        _heatmapData
+            .map((p) => LatLng(p.latitude, p.longitude))
+            .toList(),
+      );
+
+      _mapController.fitCamera(
+        CameraFit.bounds(
+          bounds: dataBounds,
+          padding: const EdgeInsets.all(36),
+        ),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final theme = Theme.of(context);
-    final highSeverityPoints = _heatmapData.where((p) => p.severity > 0.7).toList();
+    final clusterCounts = _buildRegionClusterCounts();
 
     return Scaffold(
       appBar: AppBar(
@@ -320,57 +434,18 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                           data: _transformToHeatmapDataPoints(),
                         ),
                         heatMapOptions: HeatMapOptions(
-                          radius: 25,
-                          blurFactor: 0.6,
-                          minOpacity: 0.3,
+                          radius: 56,
+                          blurFactor: 0.35,
+                          minOpacity: 0.55,
                           gradient: {
-                            0.2: Colors.blue,
-                            0.4: Colors.green,
-                            0.6: Colors.yellow,
-                            0.8: Colors.orange,
-                            1.0: Colors.red,
+                            0.10: Colors.blue,
+                            0.30: Colors.cyan,
+                            0.50: Colors.green,
+                            0.70: Colors.yellow,
+                            0.85: Colors.orange,
+                            1.00: Colors.red,
                           },
                         ),
-                      ),
-                    
-                    // High severity markers
-                    if (highSeverityPoints.isNotEmpty)
-                      MarkerLayer(
-                        markers: highSeverityPoints.map((point) {
-                          return Marker(
-                            point: LatLng(point.latitude, point.longitude),
-                            width: 40,
-                            height: 40,
-                            child: GestureDetector(
-                              onTap: () => _showPointDetails(point),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.red.withValues(alpha: 0.8),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.red.withValues(alpha: 0.5),
-                                      blurRadius: 8,
-                                      spreadRadius: 2,
-                                    ),
-                                  ],
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    point.populationAffected > 999
-                                        ? '${(point.populationAffected / 1000).toStringAsFixed(0)}k'
-                                        : point.populationAffected.toString(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
                       ),
                   ],
                 ),
@@ -426,11 +501,11 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.9),
+                      color: Colors.white.withValues(alpha: 0.92),
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
+                          color: Colors.black.withValues(alpha: 0.22),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -440,19 +515,23 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Clusters: ${_heatmapData.length}',
-                          style: theme.textTheme.labelLarge,
-                        ),
-                        Text(
-                          'High Severity: ${highSeverityPoints.length}',
-                          style: theme.textTheme.labelLarge,
-                        ),
+                        Text('Clusters', style: theme.textTheme.labelLarge),
                         const SizedBox(height: 8),
                         Text(
-                          'Auto-refresh: ${_isAutoRefreshEnabled ? 'ON' : 'OFF'}',
-                          style: theme.textTheme.labelSmall,
+                          'Total: ${_heatmapData.length}',
+                          style: theme.textTheme.labelMedium,
                         ),
+                        const SizedBox(height: 8),
+                        ..._regions.map((region) {
+                          final count = clusterCounts[region] ?? 0;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              '${region.toUpperCase()}: $count',
+                              style: theme.textTheme.labelSmall,
+                            ),
+                          );
+                        }),
                       ],
                     ),
                   ),
@@ -482,90 +561,4 @@ class _HeatmapScreenState extends State<HeatmapScreen>
     );
   }
 
-  void _showPointDetails(HeatmapPoint point) {
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _getSeverityColor(point.severity),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.location_on, color: Colors.white),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Geohash: ${point.geohash}',
-                        style: Theme.of(context).textTheme.titleMedium),
-                      Text(point.severityLabel,
-                        style: Theme.of(context).textTheme.labelMedium),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            _detailRow('Severity', '${(point.severity * 100).toStringAsFixed(1)}%'),
-            _detailRow('Population Affected', point.populationAffected.toString()),
-            _detailRow('Confidence', '${(point.confidence * 100).toStringAsFixed(0)}%'),
-            _detailRow('Need Type', point.needType.replaceAll('_', ' ')),
-            _detailRow('Source Count', point.sourceCount.toString()),
-            const SizedBox(height: 24),
-            if (point.needTypeBreakdown.isNotEmpty)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Need Breakdown', style: Theme.of(context).textTheme.titleSmall),
-                  const SizedBox(height: 12),
-                  ...point.needTypeBreakdown.entries.map((e) =>
-                    _detailRow(e.key.replaceAll('_', ' '), e.value.toString())),
-                ],
-              ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          Text(value, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          )),
-        ],
-      ),
-    );
-  }
-
-  Color _getSeverityColor(double severity) {
-    if (severity >= 0.8) return Colors.red;
-    if (severity >= 0.6) return Colors.orange;
-    if (severity >= 0.4) return Colors.yellow;
-    if (severity >= 0.2) return Colors.green;
-    return Colors.blue;
-  }
 }

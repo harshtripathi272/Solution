@@ -205,7 +205,26 @@ class ActionAidIndiaReportsSpider(BaseNGOReportsSpider):
 class PradanReportsSpider(BaseNGOReportsSpider):
     name = "pradan_reports"
     source_org = "PRADAN"
-    start_urls = ["https://www.pradan.net/ideas/#ourfieldwork"]
+    start_urls = [
+        "https://www.pradan.net/portfolio-types/reports/",
+        "https://www.pradan.net/portfolio-types/media-coverage/",
+        "https://www.pradan.net/portfolio-types/handbooks/"
+    ]
+
+    def _extract_candidate_links(self, response: scrapy.http.Response) -> list[str]:
+        # User identified specific class 'button' for PDF links on Pradan
+        links = response.css("a.button[href$='.pdf']::attr(href)").getall()
+        if not links:
+            links = super()._extract_candidate_links(response)
+        
+        abs_links = [urljoin(response.url, l) for l in links if l]
+        return list(dict.fromkeys(abs_links))
+
+    def _extract_pdf_url(self, response: scrapy.http.Response) -> str:
+        candidate = response.css("a.button[href$='.pdf']::attr(href)").get()
+        if candidate:
+            return urljoin(response.url, candidate)
+        return super()._extract_pdf_url(response)
 
 
 class SphereIndiaReportsSpider(BaseNGOReportsSpider):

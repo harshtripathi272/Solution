@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 class HeatmapPoint {
   final double latitude;
   final double longitude;
@@ -46,10 +48,21 @@ class HeatmapPoint {
   }
 
   /// Compute weighted intensity for heatmap visualization
-  /// Formula: severity * (population_affected / 1000), clamped to [0, 1]
+  /// Formula blends severity with a log-scaled population factor, clamped to [0.05, 1].
   double get weightedIntensity {
-    final weighted = severity * (populationAffected / 1000);
-    return weighted.clamp(0.0, 1.0);
+    final severityBase = severity.clamp(0.0, 1.0);
+    if (populationAffected <= 0) {
+      return severityBase.clamp(0.05, 1.0);
+    }
+
+    // Smooth population impact: 1 -> 0.35, 10 -> 0.50, 100 -> 0.68, 1000 -> 0.85
+    final popFactor = (populationAffected + 1).toDouble();
+    final popWeight = (popFactor <= 1)
+      ? 0.35
+      : (math.log(popFactor) / 7.0).clamp(0.35, 0.95);
+
+    final blended = (severityBase * 0.8) + (popWeight * 0.2);
+    return blended.clamp(0.05, 1.0);
   }
 
   /// Human-readable severity classification

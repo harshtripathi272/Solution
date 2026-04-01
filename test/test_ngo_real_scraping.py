@@ -1,8 +1,14 @@
+import sys
+from pathlib import Path
 import pytest
 import os
 import json
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
+
+# Add backend to import path
+sys.path.append(str(Path(__file__).resolve().parents[1] / "backend"))
+
 from scrapers.ngo_reports.spiders import (
     OxfamIndiaReportsSpider,
     ActionAidIndiaReportsSpider,
@@ -59,11 +65,11 @@ def run_spider_to_file(tmp_path):
 @pytest.mark.parametrize("spider_cls", [
     # OxfamIndiaReportsSpider,
     # ActionAidIndiaReportsSpider,
-    # PradanReportsSpider,
+    PradanReportsSpider,
     # SphereIndiaReportsSpider,
     # SewaBharatReportsSpider,
     #NFIReportsSpider,
-    VHAIReportsSpider,
+    #VHAIReportsSpider,
 ])
 def test_ngo_spider_real_connectivity(spider_cls, run_spider_to_file): 
     """
