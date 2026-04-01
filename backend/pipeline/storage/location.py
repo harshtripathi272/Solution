@@ -134,12 +134,33 @@ class RedisLocationStore:
                 self.redis.zrem(GEO_INDEX_KEY, uid)
                 continue
 
-            ts_epoch = float(data.get("ts_epoch", 0))
+            try:
+                ts_epoch = float(data.get("ts_epoch", 0))
+            except (TypeError, ValueError):
+                logger.warning(f"[LocationStore] Invalid timestamp for {uid}; dropping stale entry")
+                self.redis.delete(user_key)
+                self.redis.zrem(GEO_INDEX_KEY, uid)
+                continue
+
             if ts_epoch < cutoff_epoch:
                 # Stale but key not yet evicted – treat as inactive
                 continue
 
-            skills = json.loads(data.get("skills", "[]"))
+            try:
+                skills = json.loads(data.get("skills", "[]"))
+                if not isinstance(skills, list):
+                    skills = []
+            except Exception:
+                skills = []
+
+            try:
+                lat_val = float(data["lat"])
+                lon_val = float(data["lon"])
+            except (KeyError, TypeError, ValueError):
+                logger.warning(f"[LocationStore] Invalid coordinates for {uid}; dropping entry")
+                self.redis.delete(user_key)
+                self.redis.zrem(GEO_INDEX_KEY, uid)
+                continue
 
             # Optional skills filter
             if skills_required:
@@ -149,8 +170,8 @@ class RedisLocationStore:
             ts = datetime.fromtimestamp(ts_epoch, tz=timezone.utc)
             results.append(VolunteerLocation(
                 user_id=uid,
-                lat=float(data["lat"]),
-                lon=float(data["lon"]),
+                lat=lat_val,
+                lon=lon_val,
                 timestamp=ts,
                 skills=skills,
             ))

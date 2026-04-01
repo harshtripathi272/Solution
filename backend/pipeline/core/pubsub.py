@@ -5,8 +5,15 @@ from .schemas import CrisisEvent
 
 logger = logging.getLogger(__name__)
 
+TOPIC_INGESTION_NORMALIZED = "ingestion-normalized"
+TOPIC_OFFICIAL_ALERTS = "official-alerts"
+TOPIC_CITIZEN_REPORTS = "citizen-reports"
+TOPIC_SOCIAL_MEDIA_RAW = "social-media-raw"
+TOPIC_VERIFIED_CRISIS = "verified-crisis"
+TOPIC_DOCUMENT_INTELLIGENCE_RAW = "document-intelligence-raw"
+
 class Subscription:
-    def __init__(self, name: str, callback: Callable[[CrisisEvent], Any]):
+    def __init__(self, name: str, callback: Callable[[Any], Any]):
         self.name = name
         self.callback = callback
         self.queue: asyncio.Queue = asyncio.Queue()
@@ -14,15 +21,27 @@ class Subscription:
 
     async def _worker(self):
         logger.info(f"Subscriber {self.name} listening...")
+        # Concurrent processing limit to prevent overwhelming downstream services
+        semaphore = asyncio.Semaphore(10)
+
+        async def _run_callback(msg):
+            async with semaphore:
+                try:
+                    await self.callback(msg)
+                except Exception as e:
+                    logger.error(f"Error in subscriber {self.name} callback: {str(e)}")
+                finally:
+                    self.queue.task_done()
+
         while True:
             try:
                 msg = await self.queue.get()
                 if msg is None:  # Shutdown signal
                     break
-                await self.callback(msg)
-                self.queue.task_done()
+                # Spawn concurrent task
+                asyncio.create_task(_run_callback(msg))
             except Exception as e:
-                logger.error(f"Error in subscriber {self.name}: {str(e)}")
+                logger.error(f"Error in subscriber {self.name} loop: {str(e)}")
 
     def start(self):
         self._task = asyncio.create_task(self._worker())
@@ -69,3 +88,14 @@ class PubSubBroker:
 
 # Global singleton broker for the application
 broker = PubSubBroker()
+
+# Pre-create known topics so publishers/subscribers can rely on stable names.
+for _topic in (
+    TOPIC_INGESTION_NORMALIZED,
+    TOPIC_OFFICIAL_ALERTS,
+    TOPIC_CITIZEN_REPORTS,
+    TOPIC_SOCIAL_MEDIA_RAW,
+    TOPIC_VERIFIED_CRISIS,
+    TOPIC_DOCUMENT_INTELLIGENCE_RAW,
+):
+    broker.create_topic(_topic)

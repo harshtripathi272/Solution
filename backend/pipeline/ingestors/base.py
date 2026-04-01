@@ -6,8 +6,8 @@ from typing import List
 
 import httpx
 
-from pipeline.pubsub_mock import broker
-from pipeline.schemas import UnifiedIngestionEvent, to_crisis_event
+from pipeline.core.pubsub import broker
+from pipeline.core.schemas import UnifiedIngestionEvent, to_crisis_event
 
 logger = logging.getLogger(__name__)
 
@@ -34,18 +34,10 @@ class PeriodicIngestor(ABC):
                 continue
             self._seen_ids.add(event.id)
 
+            # All ingestion events now route through the Unified Data Pipeline.
+            # The pipeline handles NER, Geocoding, Aggregation, and re-publishing
+            # to downstream topics (official-alerts, social-media-raw, etc.)
             await broker.publish("ingestion-normalized", event)
-
-            # Preserve current downstream behavior while keeping source-agnostic ingestion.
-            if event.confidence_score >= 0.75:
-                topic = "official-alerts"
-                tier = 1
-                verified = True
-            else:
-                topic = "social-media-raw"
-                tier = 2
-                verified = False
-            await broker.publish(topic, to_crisis_event(event, tier=tier, verified=verified))
 
     async def request_json(
         self,

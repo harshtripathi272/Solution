@@ -1,4 +1,7 @@
 import os
+import json
+import logging
+from pathlib import Path
 import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth, firestore
 from fastapi import Depends, HTTPException, status
@@ -9,16 +12,47 @@ from models import UserProfile, UserRole
 from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file if present
 
+logger = logging.getLogger(__name__)
+
+
+def _resolve_credentials_path(raw_path: str) -> Path | None:
+    """Resolve service account path across common runtime working directories."""
+    candidate = Path(raw_path)
+    if candidate.is_absolute() and candidate.exists():
+        return candidate
+
+    backend_dir = Path(__file__).resolve().parent
+    candidates = [
+        Path.cwd() / raw_path,
+        backend_dir / raw_path,
+        backend_dir / candidate.name,
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
+
 # Initialize Firebase Admin
-cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase_service_account.json")
-if os.path.exists(cred_path):
-    cred = credentials.Certificate(cred_path)
+cred_path_raw = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase_service_account.json")
+cred_path = _resolve_credentials_path(cred_path_raw)
+if cred_path is not None:
+    cred = credentials.Certificate(str(cred_path))
     if not firebase_admin._apps: 
         firebase_admin.initialize_app(cred)
+        try:
+            with cred_path.open("r", encoding="utf-8") as fh:
+                project_id = (json.load(fh) or {}).get("project_id", "unknown")
+            logger.info("Firebase initialized with service account: %s (project=%s)", cred_path, project_id)
+        except Exception:
+            logger.info("Firebase initialized with service account: %s", cred_path)
 else:
     # Use default credentials to allow startup without breaking if json is missing
     if not firebase_admin._apps:
         firebase_admin.initialize_app()
+        logger.warning(
+            "FIREBASE_CREDENTIALS_PATH not found (%s). Falling back to Application Default Credentials.",
+            cred_path_raw,
+        )
 
 db = firestore.client()
 security = HTTPBearer()
