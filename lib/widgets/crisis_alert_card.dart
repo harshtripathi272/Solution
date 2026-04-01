@@ -16,12 +16,7 @@ class CrisisAlertCard extends StatelessWidget {
     return Container(
       width: 320,
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(32),
-        boxShadow: AppDecorations.ambientShadow,
-        border: Border.all(color: sc.withValues(alpha: 0.1), width: 1),
-      ),
+      decoration: AppDecorations.baseCard,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Container(
