@@ -13,6 +13,8 @@ from .ngo_reports import NGOReportsIngestor
 from .openweather import OpenWeatherIngestor
 from .osm_overpass import OverpassEnricher
 from .survey_loader import SurveyDataLoader
+from .global_rss_monitor import GlobalRSSMonitor
+from .mastodon_ingestor import MastodonIngestor
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,6 +26,8 @@ class IngestionManager:
         self._tasks: list[asyncio.Task] = []
         self._enrich_osm = os.getenv("INGEST_ENRICH_OSM", "false").lower() == "true"
         self._enable_ngo = os.getenv("INGEST_NGO_ENABLED", "true").lower() == "true"
+        self._enable_rss = os.getenv("INGEST_RSS_ENABLED", "true").lower() == "true"
+        self._enable_mastodon = os.getenv("INGEST_MASTODON_ENABLED", "true").lower() == "true"
         self._enable_document_stream = os.getenv("INGEST_DOCUMENT_STREAM_ENABLED", "false").lower() == "true"
         self._document_interval = int(os.getenv("INGEST_DOCUMENT_INTERVAL", "21600"))
         self._document_jsonl_path = os.getenv("INGEST_DOCUMENT_JSONL_PATH", "")
@@ -52,6 +56,22 @@ class IngestionManager:
         ]
         if self._enable_ngo:
             self._ingestors.append(self._ngo_ingestor)
+        
+        # Real-time community-focused free sources
+        if self._enable_rss:
+            self._ingestors.append(
+                GlobalRSSMonitor(
+                    interval_seconds=int(os.getenv("INGEST_RSS_INTERVAL", "1800")),  # 30 min (free tier safe)
+                    max_articles=int(os.getenv("INGEST_RSS_MAX_ARTICLES", "20")),
+                )
+            )
+        
+        if self._enable_mastodon:
+            self._ingestors.append(
+                MastodonIngestor(
+                    interval_seconds=int(os.getenv("INGEST_MASTODON_INTERVAL", "600")),  # 10 min
+                )
+            )
 
         self._survey_loader = SurveyDataLoader()
 

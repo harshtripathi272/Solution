@@ -1,0 +1,224 @@
+"""
+Mastodon Social Ingestor — Decentralized real-time social signals.
+
+Monitors the Mastodon social network (free, no API key required for public data)
+for crisis-related posts. Mastodon is ideal for GTSHD because:
+  - No paid API tier needed
+  - Public timeline freely accessible
+  - Used by humanitarian/disaster relief communities
+  - Hashtag-driven discovery enables targeted monitoring
+
+Focuses on:
+  - Verified accounts (disaster management, NGOs)
+  - Specific hashtags (#IndiaFloods, #DisasterAlert, etc.)
+  - Community-sourced crisis reports
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+from datetime import datetime, timezone
+
+import httpx
+
+from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent, NeedTemporality
+from .base import PeriodicIngestor
+
+logger = logging.getLogger(__name__)
+
+# Fallback coordinates
+FALLBACK_INDIA_COORDS = (20.5937, 78.9629)
+
+# Key Mastodon instances for humanitarian/disaster relief communities
+MASTODON_INSTANCES = [
+    "mastodon.social",  # Main instance, has disaster relief accounts
+    "pixelfed.social",  # Image-centric, sometimes used for disaster photography
+    "techhub.social",   # Tech/humanitarian projects
+]
+
+# Hashtags to monitor for crisis detection
+CRISIS_HASHTAGS = [
+    "DisasterAlert",
+    "IndiaFloods",
+    "CycloneWarning",
+    "EarthquakeAlert",
+    "HealthCrisis",
+    "CommunityHelp",
+    "DisasterRelief",
+    "CrisisResponse",
+    "EmergencyHelp",
+    "HumanitarianAid",
+]
+
+# Keywords indicating actionable crisis information
+CRISIS_KEYWORDS = {
+    "flood": ["flood", "waterlogging", "inundation", "bund"],
+    "cyclone": ["cyclone", "hurricane", "typhoon", "storm"],
+    "earthquake": ["earthquake", "seismic", "tremor"],
+    "medical": ["disease", "outbreak", "health crisis"],
+    "displacement": ["displacement", "relocation", "refugee"],
+    "food": ["hunger", "famine", "ration", "PDS"],
+}
+
+
+class MastodonIngestor(PeriodicIngestor):
+    """
+    Real-time social signal ingestion from Mastodon.
+    Uses public API (no authentication required).
+    """
+
+    def __init__(self, interval_seconds: int = 600, instances: list[str] | None = None):
+        """
+        Args:
+            interval_seconds: Poll interval (default: 10 min = 600s)
+            instances: Mastodon instances to monitor
+        """
+        super().__init__(name="MastodonIngestor", interval_seconds=interval_seconds)
+        self.instances = instances or MASTODON_INSTANCES
+        self._seen_statuses: set[str] = set()
+
+    async def fetch_events(self) -> list[UnifiedIngestionEvent]:
+        """
+        Fetches crisis-related posts from Mastodon public timelines.
+        """
+        events: list[UnifiedIngestionEvent] = []
+
+        for instance in self.instances:
+            try:
+                instance_events = await self._fetch_instance_timeline(instance)
+                events.extend(instance_events)
+            except Exception as exc:
+                logger.warning("[Mastodon] Failed to fetch from %s: %s", instance, exc)
+                continue
+
+        logger.info("[Mastodon] normalized %d events from %d instances", len(events), len(self.instances))
+        return events
+
+    async def _fetch_instance_timeline(self, instance: str) -> list[UnifiedIngestionEvent]:
+        """
+        Fetch posts from a specific Mastodon instance's public timeline.
+        """
+        events: list[UnifiedIngestionEvent] = []
+
+        # Construct the public timeline URL
+        url = f"https://{instance}/api/v1/timelines/public"
+
+        # Query parameters for filtering
+        params = {
+            "limit": 40,  # Max posts per cycle
+            "only_media": False,
+            "exclude_replies": False,
+            "exclude_reblogs": True,  # Avoid duplicate boosts
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                posts = resp.json()
+
+                for post in posts:
+                    status_id = post.get("id", "")
+                    if status_id in self._seen_statuses:
+                        continue
+
+                    content = post.get("content", "").lower()
+                    content_plain = self._strip_html(content)
+
+                    # Check if post contains crisis-related hashtags or keywords
+                    hashtags = [tag.get("name", "").lower() for tag in post.get("tags", [])]
+                    has_crisis_tag = any(tag in [h.lower() for h in CRISIS_HASHTAGS] for tag in hashtags)
+
+                    # Extract crisis type from keywords
+                    need_type = self._classify_crisis(content_plain)
+
+                    # Only ingest posts with crisis signals and tags/keywords
+                    if not (has_crisis_tag or need_type):
+                        continue
+
+                    self._seen_statuses.add(status_id)
+
+                    # Parse timestamp
+                    timestamp_str = post.get("created_at", "")
+                    timestamp = self._parse_iso_timestamp(timestamp_str)
+
+                    # Extract account info
+                    account = post.get("account", {})
+                    account_name = account.get("username", "unknown")
+                    account_verified = account.get("noindex", False) == False  # Rough indicator
+
+                    # Determine severity
+                    severity = self._determine_severity(content_plain)
+                    confidence = 0.6 if account_verified else 0.5
+
+                    # Use fallback coordinates (refined by NER)
+                    lat, lon = FALLBACK_INDIA_COORDS
+
+                    # Create unique event ID
+                    raw_id = f"mastodon:{instance}:{status_id}"
+                    event_id = hashlib.sha256(raw_id.encode()).hexdigest()[:24]
+
+                    event = UnifiedIngestionEvent(
+                        id=f"MST-{event_id}",
+                        source="MASTODON",
+                        timestamp=timestamp,
+                        location=IngestionLocation(latitude=lat, longitude=lon),
+                        need_type=need_type or "other",
+                        severity=severity,
+                        confidence_score=confidence,
+                        description=content_plain[:200],
+                        need_temporality=NeedTemporality.ACUTE,
+                        metadata={
+                            "mastodon_instance": instance,
+                            "account": account_name,
+                            "account_verified": account_verified,
+                            "hashtags": hashtags,
+                            "url": post.get("url", ""),
+                            "replies_count": post.get("replies_count", 0),
+                            "reblogs_count": post.get("reblogs_count", 0),
+                            "favorites_count": post.get("favourites_count", 0),
+                        },
+                    )
+                    events.append(event)
+
+        except Exception as exc:
+            logger.error("[Mastodon] Failed to fetch timeline from %s: %s", instance, exc)
+
+        return events
+
+    def _classify_crisis(self, text: str) -> str | None:
+        """Classify crisis type based on keywords."""
+        for need_type, keywords in CRISIS_KEYWORDS.items():
+            if any(kw in text for kw in keywords):
+                return need_type
+        return None
+
+    def _determine_severity(self, text: str) -> str:
+        """Determine severity from text cues."""
+        critical_words = ["emergency", "disaster", "critical", "urgent", "deaths", "dead"]
+        high_words = ["alert", "warning", "danger", "affected", "impact"]
+
+        if any(word in text for word in critical_words):
+            return "red"
+        elif any(word in text for word in high_words):
+            return "orange"
+        else:
+            return "green"
+
+    @staticmethod
+    def _strip_html(text: str) -> str:
+        """Remove basic HTML tags from Mastodon content."""
+        import re
+        return re.sub(r"<[^>]+>", "", text).strip()
+
+    @staticmethod
+    def _parse_iso_timestamp(timestamp_str: str) -> datetime:
+        """Parse ISO 8601 timestamps from Mastodon."""
+        try:
+            # Mastodon returns ISO 8601 format: 2024-03-15T10:30:00.000Z
+            dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            return dt.astimezone(timezone.utc)
+        except (ValueError, TypeError):
+            logger.warning("[Mastodon] Failed to parse timestamp: %s", timestamp_str)
+            return datetime.now(timezone.utc)
