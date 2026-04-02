@@ -74,6 +74,20 @@ INGESTOR_EXTRACTION_CONFIG: dict[str, ExtractionConfig] = {
         cache_results=False,
         reason="User-submitted, high variance, less repetition"
     ),
+    
+    # Real-time community-focused free sources
+    "GLOBAL_RSS": ExtractionConfig(
+        strategy=ExtractionStrategy.HYBRID,
+        confidence_threshold=0.65,
+        cache_results=True,
+        reason="Deep-scraped news articles; high duplicate rate across sources; already filtered for crisis keywords"
+    ),
+    "MASTODON": ExtractionConfig(
+        strategy=ExtractionStrategy.HYBRID,
+        confidence_threshold=0.60,
+        cache_results=False,
+        reason="Social media with high variance; user-submitted with hashtag pre-filtering reduces false positives"
+    ),
 }
 
 

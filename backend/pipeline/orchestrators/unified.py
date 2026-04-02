@@ -50,6 +50,8 @@ _SOURCE_TIER: dict[str, int] = {
     "KOBO":       2,
     "USHAHIDI":   2,
     "ACLED":      2,
+    "GLOBAL_RSS": 3,  # Deep-scraped free news, contextual tier
+    "MASTODON":   2,  # Social media, crowd-sourced tier
 }
 
 
