@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 import httpx
 
@@ -97,26 +98,27 @@ class MastodonIngestor(PeriodicIngestor):
 
     async def _fetch_instance_timeline(self, instance: str) -> list[UnifiedIngestionEvent]:
         """
-        Fetch posts from a specific Mastodon instance's public timeline.
+        Fetch posts from a specific Mastodon instance using hashtag timelines.
         """
         events: list[UnifiedIngestionEvent] = []
 
-        # Construct the public timeline URL
-        url = f"https://{instance}/api/v1/timelines/public"
-
-        # Query parameters for filtering
-        params = {
-            "limit": 40,  # Max posts per cycle
-            "only_media": False,
-            "exclude_replies": False,
-            "exclude_reblogs": True,  # Avoid duplicate boosts
-        }
-
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(url, params=params)
-                resp.raise_for_status()
-                posts = resp.json()
+                posts: list[dict] = []
+
+                # Pull from hashtag timelines because many instances restrict public timeline access.
+                for hashtag in CRISIS_HASHTAGS[:5]:
+                    tag_url = f"https://{instance}/api/v1/timelines/tag/{quote(hashtag)}"
+                    resp = await client.get(tag_url, params={"limit": 20})
+                    if resp.status_code >= 400:
+                        logger.debug(
+                            "[Mastodon] tag timeline unavailable on %s for #%s (status=%s)",
+                            instance,
+                            hashtag,
+                            resp.status_code,
+                        )
+                        continue
+                    posts.extend(resp.json() or [])
 
                 for post in posts:
                     status_id = post.get("id", "")
@@ -183,7 +185,7 @@ class MastodonIngestor(PeriodicIngestor):
                     events.append(event)
 
         except Exception as exc:
-            logger.error("[Mastodon] Failed to fetch timeline from %s: %s", instance, exc)
+            logger.error("[Mastodon] Failed to fetch tag timelines from %s: %s", instance, exc)
 
         return events
 

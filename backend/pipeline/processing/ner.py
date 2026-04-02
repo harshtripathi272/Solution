@@ -24,11 +24,10 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from pipeline.core.schemas import NeedTemporality
-from pipeline.processing.unified_extractor import (
-    GeminiExtractor,
-    UnifiedExtractionResult,
-    gemini_extractor,
-)
+from pipeline.processing.unified_extractor import GeminiExtractor, UnifiedExtractionResult, nvidia_extractor
+
+# Backward-compatible alias: older code expects gemini_extractor.
+gemini_extractor = nvidia_extractor
 
 logger = logging.getLogger(__name__)
 
