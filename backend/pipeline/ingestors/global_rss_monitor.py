@@ -11,6 +11,7 @@ catch niche local issues (e.g., "bund breach", "PDS shortage", "Gram Panchayat")
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from datetime import datetime, timezone
@@ -31,7 +32,40 @@ FALLBACK_INDIA_COORDS = (20.5937, 78.9629)
 COMMUNITY_KEYWORDS = {
     "assam": ["bund", "waterway", "tea garden", "Assam"],
     "odisha": ["panchayat", "coastal", "paddy", "Odisha", "Bhubaneswar"],
-    "bihar": ["mithila", "darbhanga", "muzaffarpur", "embankment", "Bihar"],
+    "bihar": [
+        "mithila",
+        "darbhanga",
+        "muzaffarpur",
+        "kosi",
+        "gandak",
+        "embankment",
+        "patna flood",
+        "bihar sahayata",
+        "bihar baadh",
+        "bhojpuri samachar",
+        "Bihar",
+    ],
+    "jharkhand": [
+        "ranchi",
+        "dhanbad",
+        "jamshedpur",
+        "santhal pargana",
+        "adivasi",
+        "jharkhand sahayata",
+        "santhali",
+        "Jharkhand",
+    ],
+    "chhattisgarh": [
+        "raipur",
+        "bastar",
+        "surguja",
+        "jagdalpur",
+        "hamar chhattisgarh",
+        "chhattisgarhi samachar",
+        "tribal",
+        "forest belt",
+        "Chhattisgarh",
+    ],
     "maharashtra": ["sugarcane", "farmer", "reservoir", "watershed", "Maharashtra"],
     "karnataka": ["irrigation", "drought", "coffee", "Karnataka"],
     "andhra_pradesh": ["agricultural", "mining", "Andhra", "Pradesh"],
@@ -112,7 +146,7 @@ class GlobalRSSMonitor(PeriodicIngestor):
         url = f"{self.GOOGLE_NEWS_RSS}?{urlencode(params)}"
 
         try:
-            feed_data = feedparser.parse(url)
+            feed_data = await asyncio.to_thread(feedparser.parse, url)
             entries = feed_data.get("entries", [])
 
             for entry in entries[: self.max_articles]:
@@ -124,9 +158,7 @@ class GlobalRSSMonitor(PeriodicIngestor):
 
                 try:
                     # Deep-scrape the article using newspaper3k
-                    article = Article(article_url)
-                    article.download()
-                    article.parse()
+                    article = await asyncio.to_thread(self._download_and_parse_article, article_url)
 
                     text = (article.title or "") + " " + (article.text or "")
                     text_lower = text.lower()
@@ -177,6 +209,13 @@ class GlobalRSSMonitor(PeriodicIngestor):
             logger.error("[GlobalRSSMonitor] RSS parse failed for %s: %s", region, exc)
 
         return events
+
+    @staticmethod
+    def _download_and_parse_article(article_url: str) -> Article:
+        article = Article(article_url)
+        article.download()
+        article.parse()
+        return article
 
     def _classify_crisis(self, text: str) -> str | None:
         """

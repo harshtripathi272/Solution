@@ -52,6 +52,20 @@ INGESTOR_EXTRACTION_CONFIG: dict[str, ExtractionConfig] = {
         strategy=ExtractionStrategy.NEVER,
         reason="Government alerts with structured format"
     ),
+    "PIB_RSS": ExtractionConfig(
+        strategy=ExtractionStrategy.NEVER,
+        reason="Official bulletin feed with structured metadata"
+    ),
+    "IMD_ALERTS": ExtractionConfig(
+        strategy=ExtractionStrategy.NEVER,
+        reason="Weather alerts provide structured event labels"
+    ),
+    "RELIEFWEB": ExtractionConfig(
+        strategy=ExtractionStrategy.PATTERN_ONLY,
+        confidence_threshold=0.70,
+        cache_results=True,
+        reason="Semi-structured humanitarian feed with consistent taxonomy"
+    ),
     
     # Crowd-sourced / text-based sources — need NER but benefit from caching
     "NGO_REPORTS": ExtractionConfig(

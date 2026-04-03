@@ -52,6 +52,9 @@ _SOURCE_TIER: dict[str, int] = {
     "ACLED":      2,
     "GLOBAL_RSS": 3,  # Deep-scraped free news, contextual tier
     "MASTODON":   2,  # Social media, crowd-sourced tier
+    "PIB_RSS":    1,  # Official public information bulletins
+    "IMD_ALERTS": 1,  # Official meteorological alerts
+    "RELIEFWEB":  1,  # Humanitarian alert source
 }
 
 

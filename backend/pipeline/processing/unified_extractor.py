@@ -206,6 +206,33 @@ class GeminiExtractor:
             source_excerpt_fallback=hint,
         )
 
+    async def generate_simple_text(self, prompt: str, system_instruction: str = "You are a helpful assistant.") -> str:
+        """Generic text generation (non-JSON) for summaries/explanations."""
+        if not self._client or not self._enabled:
+            return ""
+
+        async def _sync_call() -> Any:
+            return self._client.chat.completions.create(
+                model=self._model_name,
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,  # Higher temperature for creative/prose generation
+                max_tokens=self._max_tokens_text,
+                stream=False,
+                extra_body={"chat_template_kwargs": {"thinking": self._thinking_enabled}},
+            )
+
+        try:
+            async with self._semaphore:
+                logger.info("[UnifiedExtractor] Starting NVIDIA prose generation...")
+                completion = await asyncio.to_thread(_sync_call)
+                return self._extract_completion_text(completion).strip()
+        except Exception as exc:
+            logger.warning("[UnifiedExtractor] Prose generation failed: %s", exc)
+            return ""
+
     async def _chat_completion_json(self, prompt: str, max_tokens: int) -> Optional[dict[str, Any]]:
         if not self._client:
             return None

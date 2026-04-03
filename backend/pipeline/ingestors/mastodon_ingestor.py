@@ -32,6 +32,8 @@ FALLBACK_INDIA_COORDS = (20.5937, 78.9629)
 
 # Key Mastodon instances for humanitarian/disaster relief communities
 MASTODON_INSTANCES = [
+    "bihar.social",    # Bihar-origin focused instance (small but strategic)
+    "india.goonj.xyz", # India-focused social issues and civic threads
     "mastodon.social",  # Main instance, has disaster relief accounts
     "pixelfed.social",  # Image-centric, sometimes used for disaster photography
     "techhub.social",   # Tech/humanitarian projects
@@ -49,16 +51,46 @@ CRISIS_HASHTAGS = [
     "CrisisResponse",
     "EmergencyHelp",
     "HumanitarianAid",
+    "BiharSahayata",
+    "BiharBaadh",
+    "PatnaSamachar",
+    "HamarChhattisgarh",
+    "ChhattisgarhiSamachar",
+    "JharkhandSahayata",
+    "RanchiSamachar",
+    "SanthalSahayata",
+    "AdivasiSahayata",
 ]
 
 # Keywords indicating actionable crisis information
 CRISIS_KEYWORDS = {
-    "flood": ["flood", "waterlogging", "inundation", "bund"],
+    "flood": ["flood", "waterlogging", "inundation", "bund", "baadh", "kosi", "gandak"],
     "cyclone": ["cyclone", "hurricane", "typhoon", "storm"],
     "earthquake": ["earthquake", "seismic", "tremor"],
-    "medical": ["disease", "outbreak", "health crisis"],
+    "medical": ["disease", "outbreak", "health crisis", "hospital", "ambulance"],
     "displacement": ["displacement", "relocation", "refugee"],
-    "food": ["hunger", "famine", "ration", "PDS"],
+    "food": ["hunger", "famine", "ration", "pds"],
+    "water": ["water", "drinking water", "sanitation", "wash", "handpump"],
+    "other": [
+        "bihar",
+        "patna",
+        "muzaffarpur",
+        "jharkhand",
+        "ranchi",
+        "dhanbad",
+        "chhattisgarh",
+        "raipur",
+        "bastar",
+        "surguja",
+        "adivasi",
+        "santhali",
+    ],
+}
+
+REGION_HINT_KEYWORDS = {
+    "bihar": ["bihar", "patna", "muzaffarpur", "darbhanga", "mithila", "bhojpuri"],
+    "jharkhand": ["jharkhand", "ranchi", "dhanbad", "jamshedpur", "santhal", "santhali", "adivasi"],
+    "chhattisgarh": ["chhattisgarh", "raipur", "bastar", "surguja", "jagdalpur", "chhattisgarhi", "hamar"],
 }
 
 
@@ -132,6 +164,7 @@ class MastodonIngestor(PeriodicIngestor):
 
                     # Extract crisis type from keywords
                     need_type = self._classify_crisis(content_plain)
+                    region_hints = self._infer_region_hints(content_plain, hashtags)
 
                     # Only ingest posts with crisis signals and tags/keywords
                     if not (has_crisis_tag or need_type):
@@ -178,6 +211,7 @@ class MastodonIngestor(PeriodicIngestor):
                             "replies_count": post.get("replies_count", 0),
                             "reblogs_count": post.get("reblogs_count", 0),
                             "favorites_count": post.get("favourites_count", 0),
+                            "region_hints": region_hints,
                         },
                     )
                     events.append(event)
@@ -193,6 +227,15 @@ class MastodonIngestor(PeriodicIngestor):
             if any(kw in text for kw in keywords):
                 return need_type
         return None
+
+    def _infer_region_hints(self, text: str, hashtags: list[str]) -> list[str]:
+        """Infer likely state-level region hints from post text and tags."""
+        searchable = f"{text} {' '.join(hashtags)}"
+        hints: list[str] = []
+        for region, keywords in REGION_HINT_KEYWORDS.items():
+            if any(keyword in searchable for keyword in keywords):
+                hints.append(region)
+        return hints
 
     def _determine_severity(self, text: str) -> str:
         """Determine severity from text cues."""

@@ -24,6 +24,7 @@ REGION_CENTRES: dict[str, tuple[float, float]] = {
     "assam": (26.2006, 92.9376),
     "bihar": (25.0961, 85.3131),
     "bundelkhand": (25.5, 79.5),
+    "chhattisgarh": (21.2514, 81.6296),
     "jharkhand": (23.6102, 85.2799),
     "marathwada": (19.7515, 75.7139),
 }
