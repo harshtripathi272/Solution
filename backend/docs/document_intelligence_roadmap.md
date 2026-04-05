@@ -67,3 +67,35 @@ This document outlines the phase-wise integration of PDF and publication data fr
 - **Mistral OCR API**: For high-trust table extraction.
 - **Google Gemini 2.0 Flash**: For structured reasoning.
 - **Firestore**: For state tracking and validation ground truth.
+
+---
+
+## 3. Regional Source Expansion (Public/Free First)
+
+### Target states
+- Bihar
+- Chhattisgarh
+- Jharkhand
+
+### Strategy
+- Treat official/public feeds as primary alert channels (government and weather).
+- Use decentralized social signals (Mastodon) as supplemental early indicators.
+- Maintain local-language keyword packs for better regional recall.
+
+### Ingestion priorities
+1. **Mastodon expansion (implemented first pass)**
+    - Add India-focused and Bihar-focused instances (`india.goonj.xyz`, `bihar.social`).
+    - Expand hashtags and transliterated crisis terms for Bihar/Jharkhand/Chhattisgarh.
+    - Add region hint extraction in metadata for downstream fusion.
+
+2. **Regional keyword expansion (implemented first pass)**
+    - Extend `GLOBAL_RSS` region keyword lists with Bihar/Jharkhand deep terms.
+    - Add missing Chhattisgarh region profile and local terms (`raipur`, `bastar`, `surguja`, etc.).
+
+3. **Next integrations (public/free, planned)**
+    - PIB RSS state-wise official updates.
+    - IMD weather/disaster alerts.
+    - ReliefWeb India disaster feed with state narrowing.
+
+### Compliance boundary
+- Current implementation intentionally excludes restricted/private channels (for example, WhatsApp Business API and paid-restricted social APIs) until explicit onboarding and legal review are completed.

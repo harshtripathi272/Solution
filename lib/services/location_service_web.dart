@@ -34,3 +34,29 @@ Stream<Map<String, double>> getPositionStream() {
 
   return controller.stream;
 }
+
+Future<Map<String, double>> getCurrentPosition() async {
+  final completer = Completer<Map<String, double>>();
+
+  void onSuccess(GeolocationPosition pos) {
+    completer.complete({
+      'lat': pos.coords.latitude,
+      'lon': pos.coords.longitude,
+    });
+  }
+
+  void onError(GeolocationPositionError error) {
+    completer.completeError(error.message);
+  }
+
+  window.navigator.geolocation.getCurrentPosition(
+    onSuccess.toJS,
+    onError.toJS,
+    PositionOptions(
+      enableHighAccuracy: true,
+      timeout: 10000,
+    ),
+  );
+
+  return completer.future;
+}

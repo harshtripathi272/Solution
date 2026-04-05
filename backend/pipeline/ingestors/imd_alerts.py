@@ -11,87 +11,87 @@ from .base import PeriodicIngestor
 
 logger = logging.getLogger(__name__)
 
+FALLBACK_INDIA_COORDS = (20.5937, 78.9629)
 
-CRISIS_KEYWORDS = {
-    "flood": "flood",
-    "earthquake": "earthquake",
+ALERT_KEYWORDS = {
     "cyclone": "cyclone",
     "storm": "cyclone",
+    "flood": "flood",
+    "heavy rain": "flood",
+    "rainfall": "flood",
+    "heat wave": "medical",
+    "cold wave": "medical",
     "landslide": "other",
-    "fire": "fire",
-    "health": "medical",
+    "thunderstorm": "other",
 }
 
 
-class NDMARSSIngestor(PeriodicIngestor):
-    def __init__(self, feed_url: str, interval_seconds: int = 300):
-        super().__init__(name="NDMA-RSS", interval_seconds=interval_seconds)
-        self.feed_url = feed_url
+class IMDAlertsIngestor(PeriodicIngestor):
+    """Ingest public IMD warning feeds where available."""
+
+    def __init__(self, feed_url: str, interval_seconds: int = 1200):
+        super().__init__(name="IMD-ALERTS", interval_seconds=interval_seconds)
+        self.feed_url = feed_url.strip()
 
     async def fetch_events(self) -> list[UnifiedIngestionEvent]:
+        if not self.feed_url:
+            logger.warning("[IMD-ALERTS] feed URL missing. Skipping worker iteration.")
+            return []
+
         parsed = await asyncio.to_thread(feedparser.parse, self.feed_url)
         entries = getattr(parsed, "entries", [])
         events: list[UnifiedIngestionEvent] = []
 
-        for item in entries[:30]:
+        for item in entries[:50]:
             title = str(getattr(item, "title", ""))
             summary = str(getattr(item, "summary", ""))
             text = f"{title} {summary}".lower()
+
             need_type = self._classify_need_type(text)
             if not need_type:
                 continue
 
-            lat, lon = self._extract_lat_lon(item)
-            if lat is None or lon is None:
-                continue
-
-            published = getattr(item, "published", "")
+            published = str(getattr(item, "published", ""))
             timestamp = self._parse_timestamp(published)
-            raw_id = f"ndma:{getattr(item, 'id', title)}:{lat:.3f}:{lon:.3f}"
+            raw_id = f"imd:{getattr(item, 'id', title)}:{timestamp.isoformat()}"
             event_id = hashlib.sha256(raw_id.encode()).hexdigest()[:24]
 
             events.append(
                 UnifiedIngestionEvent(
-                    id=f"NDMA-{event_id}",
-                    source="NDMA_SACHET",
+                    id=f"IMD-{event_id}",
+                    source="IMD_ALERTS",
                     timestamp=timestamp,
-                    location=IngestionLocation(latitude=lat, longitude=lon),
+                    location=IngestionLocation(
+                        latitude=FALLBACK_INDIA_COORDS[0],
+                        longitude=FALLBACK_INDIA_COORDS[1],
+                    ),
                     need_type=need_type,
-                    severity="high",
-                    confidence_score=0.85,
-                    description=title or "NDMA alert",
+                    severity=self._infer_severity(text),
+                    confidence_score=0.84,
+                    description=title or "IMD alert",
                     metadata={
                         "summary": summary,
                         "link": getattr(item, "link", ""),
-                        "region": getattr(item, "author", "india"),
+                        "publisher": "IMD",
                     },
                 )
             )
 
-        logger.info("[NDMA-RSS] normalized %d events", len(events))
+        logger.info("[IMD-ALERTS] normalized %d events", len(events))
         return events
 
     def _classify_need_type(self, text: str) -> str | None:
-        for keyword, need in CRISIS_KEYWORDS.items():
+        for keyword, need_type in ALERT_KEYWORDS.items():
             if keyword in text:
-                return need
+                return need_type
         return None
 
-    def _extract_lat_lon(self, item) -> tuple[float | None, float | None]:
-        geo_lat = getattr(item, "geo_lat", None)
-        geo_long = getattr(item, "geo_long", None)
-        if geo_lat and geo_long:
-            return float(geo_lat), float(geo_long)
-
-        # Many feeds expose georss_point as "lat lon".
-        georss_point = getattr(item, "georss_point", None)
-        if georss_point and isinstance(georss_point, str) and " " in georss_point:
-            parts = georss_point.split()
-            try:
-                return float(parts[0]), float(parts[1])
-            except Exception:
-                return None, None
-        return None, None
+    def _infer_severity(self, text: str) -> str:
+        if any(token in text for token in ["red alert", "extremely heavy", "severe"]):
+            return "high"
+        if any(token in text for token in ["orange alert", "warning", "heavy"]):
+            return "moderate"
+        return "green"
 
     def _parse_timestamp(self, value: str) -> datetime:
         if value:

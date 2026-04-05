@@ -1,9 +1,12 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.staticfiles import StaticFiles
+from typing import Any, Dict, List
 from datetime import datetime, timezone, timedelta
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 import asyncio
 import os
 import httpx
@@ -18,7 +21,12 @@ from pipeline.orchestrators.allocation import allocation_engine
 from pipeline.orchestrators.document_stream import document_stream_orchestrator
 from pipeline.ingestors.manager import ingestion_manager
 from pipeline.storage.location import location_store
+from pipeline.storage import firestore_store
 from pipeline.orchestrators.unified import unified_pipeline
+from pipeline.processing.multimodal_preprocessor import multimodal_preprocessor
+from pipeline.core.pubsub import broker, TOPIC_INGESTION_NORMALIZED
+from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent
+from api import heatmap_router
 
 class RegisterRequest(BaseModel):
     requested_role: str = "volunteer"
@@ -61,6 +69,23 @@ class DocumentJsonlUrlIngestRequest(BaseModel):
     jsonl_url: str
     max_documents: int | None = None
 
+
+class NGOReportRequest(BaseModel):
+    description: str
+    latitude: float
+    longitude: float
+    media_urls: List[str] = Field(default_factory=list)
+    need_type: str = "other"
+    severity: str = "moderate"
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SeverityFeedbackRequest(BaseModel):
+    geohash: str
+    need_type: str
+    feedback: str
+    note: str | None = None
+
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -96,6 +121,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+app.include_router(heatmap_router)
+
+_heatmap_ui_path = Path(__file__).resolve().parent.parent / "ui" / "heatmap"
+if _heatmap_ui_path.exists():
+    app.mount("/ui/heatmap", StaticFiles(directory=str(_heatmap_ui_path), html=True), name="heatmap-ui")
 
 @app.get("/")
 def health_check():
@@ -321,6 +353,33 @@ async def ingest_documents_from_jsonl_url(
         logger.error("Document JSONL URL ingestion failed: %s", exc)
         raise HTTPException(status_code=500, detail="Document JSONL URL ingestion failed")
 
+
+@app.post("/api/v1/severity/feedback")
+async def submit_severity_feedback(
+    payload: SeverityFeedbackRequest,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.coordinator]))
+):
+    """Coordinator feedback endpoint for resolved/worsened/stable severity correction."""
+    feedback = payload.feedback.strip().lower()
+    if feedback not in {"resolved", "worsened", "stable"}:
+        raise HTTPException(status_code=400, detail="feedback must be one of: resolved, worsened, stable")
+
+    await firestore_store.upsert_severity_feedback(
+        geohash=payload.geohash.strip(),
+        need_type=payload.need_type.strip(),
+        feedback=feedback,
+        note=(payload.note or "").strip(),
+        actor_uid=current_user.uid,
+    )
+
+    return {
+        "status": "ok",
+        "geohash": payload.geohash,
+        "need_type": payload.need_type,
+        "feedback": feedback,
+        "updated_by": current_user.uid,
+    }
+
 @app.put("/api/v1/profile/update")
 def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(get_current_user_token)):
     """
@@ -372,12 +431,65 @@ def get_global_alerts(current_user: UserProfile = Depends(RoleChecker([UserRole.
     }
 
 @app.post("/api/v1/reports")
-def submit_report(current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))):
-    """Only NGO Workers and Coordinators can submit official reports"""
-    # Requires organization check logic in practical application
+async def submit_report(
+    req: NGOReportRequest,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
+):
+    """
+    Official report submission from a verified NGO worker.
+    Processes multimodal evidence (images/video/audio) and injects into the unified pipeline.
+    """
+    logger.info("[API] Received NGO report from %s", current_user.uid)
+
+    # 1. Multimodal Preprocessing (Gemini Placeholder)
+    insight = await multimodal_preprocessor.analyze_evidence(
+        media_urls=req.media_urls,
+        description_hint=req.description
+    )
+
+    # 2. Extract unique ID and timestamp
+    import uuid
+    event_id = f"NGO-APP-{uuid.uuid4().hex[:8]}"
+    ts = datetime.now(timezone.utc)
+
+    # 3. Create UnifiedIngestionEvent
+    # We combine user-provided metadata with multimodal insights.
+    event_metadata = {
+        **req.metadata,
+        "reporter_uid": current_user.uid,
+        "organization_id": current_user.organization_id,
+        "multimodal_analysis": {
+            "summary": insight.summary,
+            "destruction_detected": insight.destruction_detected,
+            "crowd_size_estimate": insight.crowd_size_estimate,
+            "distress_level": insight.distress_level,
+            "confidence": insight.confidence,
+        },
+        "media_urls": req.media_urls,
+    }
+
+    event = UnifiedIngestionEvent(
+        id=event_id,
+        location=IngestionLocation(latitude=req.latitude, longitude=req.longitude),
+        need_type=insight.detected_needs[0] if insight.detected_needs else req.need_type,
+        severity=req.severity,
+        timestamp=ts,
+        source=f"NGO_APP_{current_user.organization_id or 'GENERAL'}",
+        confidence_score=insight.confidence or 0.8,
+        description=f"{req.description}\n\n[Multimodal AI Summary]: {insight.summary}",
+        population_affected=insight.population_affected,
+        metadata=event_metadata,
+        needs_geocoding=False  # Direct app GPS
+    )
+
+    # 4. Inject into the normalized ingestion topic
+    await broker.publish(TOPIC_INGESTION_NORMALIZED, event)
+
     return {
-        "message": "Report submitted successfully.", 
-        "organization": current_user.organization_id
+        "status": "ok",
+        "message": "Report submitted and processing started.",
+        "event_id": event_id,
+        "multimodal_summary": insight.summary
     }
 
 @app.get("/api/v1/tasks")

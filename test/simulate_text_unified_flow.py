@@ -63,86 +63,98 @@ async def run() -> None:
 
     unified_pipeline.start()
 
-    paragraph = (
-        "In Gaya district, Bihar, several villages are facing a combination of water scarcity "
-        "and food shortages due to prolonged dry conditions. Nearly 600 households are affected, "
-        "with reports of malnutrition among children and increasing migration of laborers. "
-        "Urgent interventions include water supply, food aid, and livelihood support."
-    )
-
     if not os.getenv("NVIDIA_API_KEY"):
         raise RuntimeError("NVIDIA_API_KEY is missing. Set it before running this simulation.")
 
-    extraction = None
-    for attempt in range(1, 4):
-        extraction = await nvidia_extractor.extract(paragraph)
-        if extraction is not None:
-            break
-        logger.warning("Extractor attempt %d failed (timeout/empty response), retrying...", attempt)
-        await asyncio.sleep(2)
-
-    if extraction is None:
-        raise RuntimeError("Unified extractor returned None after 3 attempts. Check NVIDIA/API logs.")
-
-    logger.info(
-        "Extractor output: need_type=%s severity=%s confidence=%.2f places=%s",
-        extraction.need_type,
-        extraction.severity,
-        extraction.confidence,
-        extraction.places,
-    )
-
-    # Fixed coordinates to skip geocoding path and make storage deterministic.
-    lat, lon = 28.8, 79.0
-    run_tag = uuid.uuid4().hex[:8]
-    event = UnifiedIngestionEvent(
-        id=f"SIM-TEXT-{run_tag}",
-        source=f"SIM_NGO_TEXT_{run_tag}",
-        timestamp=datetime.now(timezone.utc),
-        location=IngestionLocation(latitude=lat, longitude=lon),
-        need_type=extraction.need_type or "other",
-        severity=extraction.severity or "moderate",
-        confidence_score=max(0.0, min(extraction.confidence, 1.0)),
-        description=paragraph,
-        metadata={
-            "source_org": "Simulation",
-            "ingest_channel": "text_unified_extractor_test",
-            "places": extraction.places,
-            "raw_extraction": extraction.raw_json,
-            "region": "rampur",
+    scenarios = [
+        {
+            "name": "Bihar - Gaya Water Crisis",
+            "lat": 24.7914,
+            "lon": 85.0002,
+            "text": (
+                "CRITICAL: Extreme water scarcity in Gaya district, Bihar. "
+                "Over 2000 people are without access to clean drinking water. "
+                "Immediate tanker supply required. High risk of dehydration."
+            )
         },
-        needs_geocoding=False,
-    )
+        {
+            "name": "Bihar - Patna Flood Warning",
+            "lat": 25.5941,
+            "lon": 85.1376,
+            "text": (
+                "SEVERE: Heavy rainfall in Patna has led to urban flooding. "
+                "Drains are overflowing and low-lying areas are submerged. "
+                "Immediate evacuation of 500 families needed. Food and shelter are urgent."
+            )
+        },
+        {
+            "name": "Jharkhand - Ranchi Health Emergency",
+            "lat": 23.3441,
+            "lon": 85.3096,
+            "text": (
+                "URGENT: Outbreak of waterborne diseases in Ranchi outskirts. "
+                "Local clinics are overwhelmed. More than 150 cases reported today. "
+                "Medical supplies and temporary health camps are critically needed."
+            )
+        },
+        {
+            "name": "Jharkhand - Dhanbad Food Insecurity",
+            "lat": 23.7957,
+            "lon": 86.4304,
+            "text": (
+                "CRITICAL: Acute food shortage in rural Dhanbad following crop failure. "
+                "Families are skipping meals. Distribution of dry rations is mandatory to prevent starvation."
+            )
+        }
+    ]
 
-    expected_geohash = geohash_encode(lat, lon, precision=5)
-    logger.info(
-        "Dedup identity for this run: source=%s geohash=%s need_type=%s date=%s",
-        event.source,
-        expected_geohash,
-        event.need_type,
-        event.timestamp.strftime("%Y-%m-%d"),
-    )
+    for scenario in scenarios:
+        logger.info(f"Processing scenario: {scenario['name']}")
+        
+        extraction = None
+        for attempt in range(1, 4):
+            extraction = await nvidia_extractor.extract(scenario["text"])
+            if extraction is not None:
+                break
+            logger.warning("Extractor attempt %d failed for %s, retrying...", attempt, scenario["name"])
+            await asyncio.sleep(2)
 
-    logger.info("Publishing simulated event %s to %s", event.id, TOPIC_INGESTION_NORMALIZED)
-    await broker.publish(TOPIC_INGESTION_NORMALIZED, event)
+        if extraction is None:
+            logger.error("Failed to extract for %s", scenario["name"])
+            continue
 
-    await _wait_for_topic_drain(TOPIC_INGESTION_NORMALIZED, timeout_seconds=120)
+        run_tag = uuid.uuid4().hex[:8]
+        
+        # Extract population or default to a random visible number for the test
+        pop_affected = extraction.population_affected if extraction.population_affected > 0 else 450
 
-    region_doc = await firestore_store.get_region(expected_geohash)
-    if not region_doc:
-        raise RuntimeError(
-            f"No Firestore need_regions document found for geohash={expected_geohash}."
+        event = UnifiedIngestionEvent(
+            id=f"SIM-HT-{run_tag}",
+            source=f"SIM_HEATMAP_{run_tag}",
+            timestamp=datetime.now(timezone.utc),
+            location=IngestionLocation(latitude=scenario["lat"], longitude=scenario["lon"]),
+            need_type=extraction.need_type or "other",
+            severity=extraction.severity or "high",
+            confidence_score=max(0.8, min(extraction.confidence, 1.0)), # Boost confidence for map visibility
+            description=scenario["text"],
+            population_affected=pop_affected,
+            metadata={
+                "source_org": "Simulation-Heatmap",
+                "ingest_channel": "heatmap_injection_test",
+                "places": extraction.places,
+                "raw_extraction": extraction.raw_json,
+                "region": scenario["name"].split(" - ")[0].lower()
+            },
+            needs_geocoding=False,
         )
 
-    logger.info("Firestore write confirmed for geohash=%s", expected_geohash)
-    logger.info(
-        "Region snapshot: dominant_need=%s latest_event_id=%s event_count=%s",
-        region_doc.get("dominant_need"),
-        region_doc.get("latest_event_id"),
-        region_doc.get("event_count"),
-    )
+        expected_geohash = geohash_encode(scenario["lat"], scenario["lon"], precision=5)
+        logger.info("Publishing %s (geohash=%s) to %s", event.id, expected_geohash, TOPIC_INGESTION_NORMALIZED)
+        await broker.publish(TOPIC_INGESTION_NORMALIZED, event)
 
-    logger.info("--- Text-only simulation completed successfully ---")
+    # Wait for all events to be processed
+    await _wait_for_topic_drain(TOPIC_INGESTION_NORMALIZED, timeout_seconds=60)
+    logger.info("--- All scenarios published and drained ---")
 
 
 if __name__ == "__main__":

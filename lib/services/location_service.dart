@@ -51,6 +51,14 @@ class LocationService {
     _revokeBackendLocation();
   }
 
+  Future<Map<String, double>> getCurrentPosition() async {
+    final canTrack = await platform_location.checkAndRequestPermission();
+    if (!canTrack) {
+      throw Exception('Location permission denied');
+    }
+    return await platform_location.getCurrentPosition();
+  }
+
   void _sendToBackend(double lat, double lon) async {
     if (appState.apiClient == null || !appState.isAuthenticated) return;
     try {
@@ -69,7 +77,7 @@ class LocationService {
 
   void _revokeBackendLocation() async {
     try {
-      await appState.apiClient?.get('/api/v1/location/revoke');
+      await appState.apiClient?.delete('/api/v1/location/revoke');
     } catch (_) {}
   }
 }

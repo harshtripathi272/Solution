@@ -31,7 +31,7 @@ class StatCard extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             value,
-            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+            style: Theme.of(context).textTheme.displaySmall?.copyWith(
               color: AppColors.onSurface,
             ),
           ),

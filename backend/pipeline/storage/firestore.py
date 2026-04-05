@@ -78,6 +78,8 @@ class FirestoreStore:
     _COLLECTION = "need_regions"
     _DOCUMENT_REGISTRY_COLLECTION = "document_registry"
     _CHRONIC_COLLECTION = "chronic_scores"
+    _PIPELINE_ALERTS_COLLECTION = "pipeline_alerts"
+    _SEVERITY_FEEDBACK_COLLECTION = "severity_feedback"
 
     def __init__(self) -> None:
         self._db = None
@@ -338,6 +340,81 @@ class FirestoreStore:
             logger.debug("[FirestoreStore] Upserted document_registry for %s", metadata.sha256_hash)
         except Exception as exc:
             logger.error("[FirestoreStore] upsert_document_registry failed for %s: %s", metadata.sha256_hash, exc)
+
+    async def create_pipeline_alert(
+        self,
+        event_id: str,
+        stage: str,
+        message: str,
+        details: dict | None = None,
+        severity: str = "error",
+    ) -> None:
+        db = self._get_db()
+        if not db:
+            return
+        payload = {
+            "event_id": event_id,
+            "stage": stage,
+            "message": message,
+            "details": details or {},
+            "severity": severity,
+            "created_at": datetime.now(timezone.utc),
+            "status": "open",
+        }
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.collection(self._PIPELINE_ALERTS_COLLECTION).add(payload),
+            )
+        except Exception as exc:
+            logger.error("[FirestoreStore] create_pipeline_alert failed for %s: %s", event_id, exc)
+
+    async def upsert_severity_feedback(
+        self,
+        geohash: str,
+        need_type: str,
+        feedback: str,
+        note: str,
+        actor_uid: str,
+    ) -> None:
+        db = self._get_db()
+        if not db or not geohash:
+            return
+        doc_id = f"{geohash}:{need_type}"
+        payload = {
+            "geohash": geohash,
+            "need_type": need_type,
+            "feedback": feedback,
+            "note": note,
+            "actor_uid": actor_uid,
+            "updated_at": datetime.now(timezone.utc),
+        }
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.collection(self._SEVERITY_FEEDBACK_COLLECTION).document(doc_id).set(payload, merge=True),
+            )
+        except Exception as exc:
+            logger.error("[FirestoreStore] upsert_severity_feedback failed for %s: %s", doc_id, exc)
+
+    async def get_severity_feedback(self, geohash: str, need_type: str) -> str | None:
+        db = self._get_db()
+        if not db or not geohash:
+            return None
+        doc_id = f"{geohash}:{need_type}"
+        try:
+            doc = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.collection(self._SEVERITY_FEEDBACK_COLLECTION).document(doc_id).get(),
+            )
+            if not doc.exists:
+                return None
+            data = doc.to_dict() or {}
+            feedback = str(data.get("feedback", "")).strip().lower()
+            return feedback or None
+        except Exception as exc:
+            logger.error("[FirestoreStore] get_severity_feedback failed for %s: %s", doc_id, exc)
+            return None
 
 
 # Global singleton

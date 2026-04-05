@@ -58,10 +58,10 @@ async def run_simulation():
     # 2. Synthetic NGO Report Payload
     # Using a known tiny 1-page PDF for maximum speed
     synthetic_report = {
-        "source_org": "Sphere India",
-        "pdf_url": "https://www.actionaidindia.org/wp-content/uploads/2025/07/Information-Asymmetry-and-Digital-Divide-During-the-Pandemic-I-Report-I-Final.pdf", # Known small sitrep
-        "published_on": "2024-03-30",
-        "snippet": "Public parks in Delhi"
+        "source_org": "Action Aid",
+        "pdf_url": "https://www.actionaidindia.org/wp-content/uploads/2018/06/Status-of-Tenant-Farmers_20-July-2016_AAI-FD.pdf", # Known small sitrep
+        "published_on": "2016-07-19",
+        "snippet": "Status of Tenant Farmers"
     }
 
     logger.info(f"Step 1: Publishing synthetic report to {TOPIC_DOCUMENT_INTELLIGENCE_RAW}")

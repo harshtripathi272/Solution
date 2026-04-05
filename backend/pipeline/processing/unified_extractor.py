@@ -206,6 +206,33 @@ class GeminiExtractor:
             source_excerpt_fallback=hint,
         )
 
+    async def generate_simple_text(self, prompt: str, system_instruction: str = "You are a helpful assistant.") -> str:
+        """Generic text generation (non-JSON) for summaries/explanations."""
+        if not self._client or not self._enabled:
+            return ""
+
+        async def _sync_call() -> Any:
+            return self._client.chat.completions.create(
+                model=self._model_name,
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,  # Higher temperature for creative/prose generation
+                max_tokens=self._max_tokens_text,
+                stream=False,
+                extra_body={"chat_template_kwargs": {"thinking": self._thinking_enabled}},
+            )
+
+        try:
+            async with self._semaphore:
+                logger.info("[UnifiedExtractor] Starting NVIDIA prose generation...")
+                completion = await asyncio.to_thread(_sync_call)
+                return self._extract_completion_text(completion).strip()
+        except Exception as exc:
+            logger.warning("[UnifiedExtractor] Prose generation failed: %s", exc)
+            return ""
+
     async def _chat_completion_json(self, prompt: str, max_tokens: int) -> Optional[dict[str, Any]]:
         if not self._client:
             return None
@@ -351,7 +378,11 @@ Required JSON schema:
     "places": ["most_specific_place", "district", "state"],
     "need_types": ["one or more of medical|water_sanitation|food|shelter|education|protection|livelihood|other"],
     "severity": "critical|high|moderate|low",
-    "confidence": 0.0
+    "confidence": 0.0,
+    "infrastructure_damage_score": 0.0,
+    "road_accessibility_risk": 0.0,
+    "water_access_severity": 3,
+    "health_service_severity": 3
 }}
 
 Rules:
@@ -381,6 +412,12 @@ Return ONLY valid JSON and follow this schema exactly:
   "recommended_interventions": ["actionable intervention"],
   "seasonal_urgency": "pre-monsoon|monsoon|post-monsoon|harvest|summer|winter|none",
   "vulnerable_groups": ["women|children|elderly|disabled|tribal|other"],
+  "infrastructure_damage_score": 0.0,
+  "road_accessibility_risk": 0.3,
+  "security_constraint_risk": 0.2,
+  "water_access_severity": 3,
+  "food_security_severity": 3,
+  "health_service_severity": 3,
   "infrastructure_gaps": [
     {{"type": "water|health|roads|shelter|sanitation|education|other", "status": "damaged|missing|insufficient|functional", "count": 0}}
   ],
@@ -597,5 +634,6 @@ PDF extracted text (truncated):
 
 
 # Global singletons
-nvidia_extractor = GeminiExtractor()
+gemini_extractor = GeminiExtractor()
+nvidia_extractor = gemini_extractor  # Alias for newer code
 

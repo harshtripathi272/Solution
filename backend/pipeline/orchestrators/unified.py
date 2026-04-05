@@ -50,6 +50,11 @@ _SOURCE_TIER: dict[str, int] = {
     "KOBO":       2,
     "USHAHIDI":   2,
     "ACLED":      2,
+    "GLOBAL_RSS": 3,  # Deep-scraped free news, contextual tier
+    "MASTODON":   2,  # Social media, crowd-sourced tier
+    "PIB_RSS":    1,  # Official public information bulletins
+    "IMD_ALERTS": 1,  # Official meteorological alerts
+    "RELIEFWEB":  1,  # Humanitarian alert source
 }
 
 
@@ -175,6 +180,19 @@ class UnifiedPipeline:
             crisis_lon=event.location.longitude,
             radius_km=20.0,
         )
+
+        # Inject latest ground-truth feedback (if present) before score calculation.
+        feedback = await firestore_store.get_severity_feedback(event.geohash, event.need_type)
+        if feedback:
+            event = event.model_copy(
+                update={
+                    "metadata": {
+                        **event.metadata,
+                        "ground_truth_feedback": feedback,
+                    },
+                }
+            )
+
         severity_result = await severity_engine.calculate(
             event,
             nearby_volunteer_count=len(nearby),
@@ -232,6 +250,13 @@ class UnifiedPipeline:
                     idx,
                     event.id,
                     result,
+                )
+                await firestore_store.create_pipeline_alert(
+                    event_id=event.id,
+                    stage="storage_fanout",
+                    message=f"Storage task {idx} failed",
+                    details={"exception": str(result), "geohash": event.geohash, "need_type": event.need_type},
+                    severity="error",
                 )
 
         logger.info("[UnifiedPipeline] Storage fan-out completed for %s", event.id)

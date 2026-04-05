@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'config/theme.dart';
 import 'models/user_model.dart';
 import 'providers/app_state.dart';
@@ -158,10 +159,11 @@ class AppShell extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surfaceContainerLowest,
         boxShadow: AppDecorations.ambientShadow,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: items.asMap().entries.map((entry) {
@@ -169,26 +171,31 @@ class AppShell extends StatelessWidget {
               return GestureDetector(
                 onTap: () => state.setNavIndex(entry.key),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeOutCirc,
                   padding: EdgeInsets.symmetric(
-                    horizontal: isSmallScreen ? 14 : 24, 
-                    vertical: 10
+                    horizontal: isSelected ? (isSmallScreen ? 18 : 28) : 12, 
+                    vertical: 12
                   ),
                   decoration: BoxDecoration(
-                    color: isSelected ? AppColors.surfaceContainerLow : Colors.transparent,
+                    color: isSelected ? AppColors.primaryContainer.withValues(alpha: 0.15) : Colors.transparent,
                     borderRadius: BorderRadius.circular(9999),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(entry.value['icon'] as IconData, size: 24,
-                        color: isSelected ? AppColors.primary : AppColors.outlineVariant),
-                    if (isSelected) ...[
-                      SizedBox(width: isSmallScreen ? 6 : 12),
-                      Flexible(
+                        color: isSelected ? AppColors.primary : AppColors.outlineVariant)
+                      .animate(target: isSelected ? 1 : 0)
+                      .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 300.ms, curve: Curves.easeOutBack),
+                    if (isSelected) 
+                      Padding(
+                        padding: EdgeInsets.only(left: isSmallScreen ? 6.0 : 12.0),
                         child: Text(entry.value['label'] as String,
                             style: Theme.of(context).textTheme.labelLarge,
-                            overflow: TextOverflow.ellipsis),
+                            overflow: TextOverflow.ellipsis)
+                          .animate()
+                          .fadeIn(duration: 300.ms, curve: Curves.easeOut)
+                          .slideX(begin: 0.2, end: 0, duration: 300.ms, curve: Curves.easeOutBack),
                       ),
-                    ],
                   ]),
                 ),
               );

@@ -13,6 +13,11 @@ from .ngo_reports import NGOReportsIngestor
 from .openweather import OpenWeatherIngestor
 from .osm_overpass import OverpassEnricher
 from .survey_loader import SurveyDataLoader
+from .global_rss_monitor import GlobalRSSMonitor
+from .mastodon_ingestor import MastodonIngestor
+from .pib_rss import PIBRSSIngestor
+from .imd_alerts import IMDAlertsIngestor
+from .reliefweb import ReliefWebIngestor
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,6 +29,12 @@ class IngestionManager:
         self._tasks: list[asyncio.Task] = []
         self._enrich_osm = os.getenv("INGEST_ENRICH_OSM", "false").lower() == "true"
         self._enable_ngo = os.getenv("INGEST_NGO_ENABLED", "true").lower() == "true"
+        self._enable_rss = os.getenv("INGEST_RSS_ENABLED", "true").lower() == "true"
+        self._enable_mastodon = os.getenv("INGEST_MASTODON_ENABLED", "true").lower() == "true"
+        self._enable_pib = os.getenv("INGEST_PIB_ENABLED", "false").lower() == "true"
+        self._enable_imd = os.getenv("INGEST_IMD_ENABLED", "false").lower() == "true"
+        self._enable_reliefweb = os.getenv("INGEST_RELIEFWEB_ENABLED", "false").lower() == "true"
+        self._enable_ndma = os.getenv("INGEST_NDMA_ENABLED", "true").lower() == "true"
         self._enable_document_stream = os.getenv("INGEST_DOCUMENT_STREAM_ENABLED", "false").lower() == "true"
         self._document_interval = int(os.getenv("INGEST_DOCUMENT_INTERVAL", "21600"))
         self._document_jsonl_path = os.getenv("INGEST_DOCUMENT_JSONL_PATH", "")
@@ -36,22 +47,70 @@ class IngestionManager:
 
         self._ingestors = [
             GDACSIngestor(interval_seconds=int(os.getenv("INGEST_GDACS_INTERVAL", "60"))),
-            # NDMARSSIngestor(
-            #     feed_url=os.getenv("INGEST_NDMA_RSS_URL", "https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml"),
-            #     interval_seconds=int(os.getenv("INGEST_NDMA_INTERVAL", "300")),
-            # ),
-            # OpenWeatherIngestor(
-            #     api_key=os.getenv("OPENWEATHER_API_KEY", ""),
-            #     interval_seconds=int(os.getenv("INGEST_WEATHER_INTERVAL", "420")),
-            # ),
-            # IndiaNewsIngestor(
-            #     news_api_key=os.getenv("NEWS_API_KEY", ""),
-            #     newsdata_api_key=os.getenv("NEWS_DATA_API_KEY", ""),
-            #     interval_seconds=int(os.getenv("INGEST_NEWS_INTERVAL", "420")),
-            # ),
         ]
+        
+        if self._enable_ndma:
+            self._ingestors.append(
+                NDMARSSIngestor(
+                    feed_url=os.getenv("INGEST_NDMA_RSS_URL", "https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml"),
+                    interval_seconds=int(os.getenv("INGEST_NDMA_INTERVAL", "300")),
+                )
+            )
+
+        self._ingestors.extend([
+            OpenWeatherIngestor(
+                api_key=os.getenv("OPENWEATHER_API_KEY", ""),
+                interval_seconds=int(os.getenv("INGEST_WEATHER_INTERVAL", "420")),
+            ),
+            IndiaNewsIngestor(
+                news_api_key=os.getenv("NEWS_API_KEY", ""),
+                newsdata_api_key=os.getenv("NEWS_DATA_API_KEY", ""),
+                interval_seconds=int(os.getenv("INGEST_NEWS_INTERVAL", "420")),
+            ),
+        ])
         if self._enable_ngo:
             self._ingestors.append(self._ngo_ingestor)
+        
+        # Real-time community-focused free sources
+        if self._enable_rss:
+            self._ingestors.append(
+                GlobalRSSMonitor(
+                    interval_seconds=int(os.getenv("INGEST_RSS_INTERVAL", "1800")),  # 30 min (free tier safe)
+                    max_articles=int(os.getenv("INGEST_RSS_MAX_ARTICLES", "20")),
+                )
+            )
+        
+        if self._enable_mastodon:
+            self._ingestors.append(
+                MastodonIngestor(
+                    interval_seconds=int(os.getenv("INGEST_MASTODON_INTERVAL", "600")),  # 10 min
+                )
+            )
+
+        if self._enable_pib:
+            pib_feeds = os.getenv("INGEST_PIB_RSS_FEEDS", "").split(",")
+            self._ingestors.append(
+                PIBRSSIngestor(
+                    feed_urls=pib_feeds,
+                    interval_seconds=int(os.getenv("INGEST_PIB_INTERVAL", "1800")),
+                )
+            )
+
+        if self._enable_imd:
+            self._ingestors.append(
+                IMDAlertsIngestor(
+                    feed_url=os.getenv("INGEST_IMD_ALERT_FEED", ""),
+                    interval_seconds=int(os.getenv("INGEST_IMD_INTERVAL", "1200")),
+                )
+            )
+
+        if self._enable_reliefweb:
+            self._ingestors.append(
+                ReliefWebIngestor(
+                    interval_seconds=int(os.getenv("INGEST_RELIEFWEB_INTERVAL", "1800")),
+                    app_name=os.getenv("INGEST_RELIEFWEB_APP_NAME", "sevasetu"),
+                )
+            )
 
         self._survey_loader = SurveyDataLoader()
 

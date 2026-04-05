@@ -22,13 +22,9 @@ def fallback_explanation(event, payload: dict) -> str:
     )
 
 
+from pipeline.processing.unified_extractor import gemini_extractor
+
 async def generate_explanation(event, payload: dict) -> str:
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    model = os.getenv("GEMINI_FLASH_MODEL", "gemini-2.0-flash")
-
-    if not api_key:
-        return fallback_explanation(event, payload)
-
     prompt = (
         "Generate a short operational explanation for volunteer dispatch. "
         "Keep it under 65 words. Mention score, class, location, source evidence, and response time.\n"
@@ -43,30 +39,12 @@ async def generate_explanation(event, payload: dict) -> str:
         f"timestamp={datetime.now(timezone.utc).isoformat()}"
     )
 
-    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    request_body = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 150,
-        },
-    }
-
     try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            response = await client.post(
-                f"{endpoint}?key={api_key}",
-                json=request_body,
-            )
-            response.raise_for_status()
-            data = response.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                return fallback_explanation(event, payload)
-            parts = (((candidates[0] or {}).get("content") or {}).get("parts") or [])
-            if not parts:
-                return fallback_explanation(event, payload)
-            text = (parts[0] or {}).get("text", "").strip()
-            return text or fallback_explanation(event, payload)
-    except Exception:
+        text = await gemini_extractor.generate_simple_text(
+            prompt=prompt,
+            system_instruction="You are an expert humanitarian dispatcher generating brief operational sit-reps."
+        )
+        return text or fallback_explanation(event, payload)
+    except Exception as exc:
+        logger.warning("[Explainer] Hub call failed: %s", exc)
         return fallback_explanation(event, payload)

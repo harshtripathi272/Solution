@@ -24,13 +24,13 @@ class CoordinatorDashboard extends StatelessWidget {
             children: [
               // Header
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 32, 24, 8),
+                padding: const EdgeInsets.fromLTRB(32, 48, 32, 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Here is the latest snapshot of your community.',
                         style: theme.textTheme.bodyLarge),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Text('Overview', style: theme.textTheme.displayMedium),
                   ],
                 ),
@@ -40,7 +40,7 @@ class CoordinatorDashboard extends StatelessWidget {
               
               // Stats
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -67,11 +67,11 @@ class CoordinatorDashboard extends StatelessWidget {
               // Crisis Alerts
               if (state.crisisAlerts.isNotEmpty) ...[
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: Row(
                     children: [
                       Text('Predictive Alerts', style: theme.textTheme.headlineLarge),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 16),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(color: AppColors.error.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
@@ -80,29 +80,29 @@ class CoordinatorDashboard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
                 SizedBox(
                   height: 240,
                   child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
                     scrollDirection: Axis.horizontal,
                     itemCount: state.crisisAlerts.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 16),
+                    separatorBuilder: (_, _) => const SizedBox(width: 24),
                     itemBuilder: (context, index) => CrisisAlertCard(alert: state.crisisAlerts[index]),
                   ),
                 ),
-                const SizedBox(height: 48),
+                const SizedBox(height: 64),
               ],
               
               // Recent Tasks
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Text('Recent Needs', style: theme.textTheme.headlineLarge),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
               
               ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 32),
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: state.tasks.take(5).length,

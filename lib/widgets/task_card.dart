@@ -26,7 +26,7 @@ class TaskCard extends StatelessWidget {
           ])),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(color: sc.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(999)),
+            decoration: BoxDecoration(color: sc.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
             child: Text(task.status.name.toUpperCase(), style: theme.textTheme.labelLarge?.copyWith(color: sc, fontSize: 11)),
           ),
         ]),
@@ -42,13 +42,13 @@ class TaskCard extends StatelessWidget {
             Row(children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: AppColors.surfaceContainerLow, borderRadius: BorderRadius.circular(999)),
+                decoration: BoxDecoration(color: AppColors.surfaceContainerLow, borderRadius: BorderRadius.circular(12)),
                 child: Text(task.urgency.toUpperCase(), style: theme.textTheme.labelLarge?.copyWith(color: AppColors.onSurfaceVariant, fontSize: 12)),
               ),
               const SizedBox(width: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: sc.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(999)),
+                decoration: BoxDecoration(color: sc.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
                 child: Text(task.status.name.toUpperCase(), style: theme.textTheme.labelLarge?.copyWith(color: sc, fontSize: 12)),
               ),
               const Spacer(),
