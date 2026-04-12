@@ -35,7 +35,27 @@ class ValidationService:
             logger.error(f"Error cleaning cache: {e}")
 
     async def _verify_report(self, event: CrisisEvent):
-        """Cross references a tier-2 event against official cache using 10km/2hr fuzzy matching"""
+        """Cross references a tier-2 event against official cache or applies satellite overlay."""
+        
+        # 1. NEW SATELLITE ENGINE OVERLAY: Direct Verification via Sentinel-2
+        # If a citizen reports a flood, check ESA Sentinel rasters. If anomalous water detected, bypass fuzzy match!
+        if event.type.value.lower() == "flood":
+            logger.info(f"Checking Sentinel-2 Satellite overlays for Flood event {event.id}...")
+            # sentinelsat integration
+            from pipeline.orchestrators.satellite_validator import satellite_validator
+            has_extent = await satellite_validator.verify_flood_extent(
+                event.location.latitude, 
+                event.location.longitude, 
+                event.timestamp
+            )
+            
+            if has_extent:
+                event.is_verified = True
+                logger.info(f"[VALIDATED] Event {event.id} auto-boosted to 0.95 confidence via SATELLITE (Sentinel-2 NDVI/NDWI). Routing to verified-crisis.")
+                await broker.publish("verified-crisis", event)
+                return
+
+        # 2. STANDARD FUZZY MATCHING
         if self._is_fuzzy_match(event):
             event.is_verified = True
             logger.info(f"[VALIDATED] Event {event.id} verified via cross-reference. Routing to verified-crisis.")

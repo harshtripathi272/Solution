@@ -38,7 +38,7 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _sourceCard(Icons.camera_alt, 'Camera', AppColors.primaryContainer),
-              _sourceCard(Icons.mic, 'Voice', AppColors.tertiary),
+              _sourceCard(Icons.mic, 'Voice (Chirp)', AppColors.tertiary),
               _sourceCard(Icons.edit_note, 'Text', AppColors.surfaceContainerHigh),
             ],
           ),
