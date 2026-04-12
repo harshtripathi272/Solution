@@ -29,12 +29,13 @@ MAX_LON, MIN_LON = 180.0, -180.0
 class VolunteerLocation:
     """Lightweight dataclass for results coming back from Redis."""
     def __init__(self, user_id: str, lat: float, lon: float,
-                 timestamp: datetime, skills: List[str]):
-        self.user_id   = user_id
-        self.lat       = lat
-        self.lon       = lon
-        self.timestamp = timestamp
-        self.skills    = skills
+                 timestamp: datetime, skills: List[str], fatigue_score: float = 0.0):
+        self.user_id       = user_id
+        self.lat           = lat
+        self.lon           = lon
+        self.timestamp     = timestamp
+        self.skills        = skills
+        self.fatigue_score = fatigue_score
 
 
 class RedisLocationStore:
@@ -167,6 +168,17 @@ class RedisLocationStore:
                 if not all(s in skills for s in skills_required):
                     continue
 
+            # --- Real-Time Fatigue Calculation --- 
+            # fatigue_score = f(hours_last_7d, severity_sum, recency_decay)
+            hours_last_7d = float(data.get("hours_last_7d", 0))
+            severity_sum  = float(data.get("severity_sum", 0))
+            days_since_break = float(data.get("days_since_break", 7))
+            
+            # Formulate the penalty score. High hours and high severity handled spikes fatigue.
+            # E.g. A volunteer working 40 hours in 7 days on 3 critical crises with 0 days rest = High penalty
+            calc_fatigue = (hours_last_7d * 0.5) + (severity_sum * 1.5) - (days_since_break * 3.0)
+            calc_fatigue = max(0.0, calc_fatigue) 
+
             ts = datetime.fromtimestamp(ts_epoch, tz=timezone.utc)
             results.append(VolunteerLocation(
                 user_id=uid,
@@ -174,6 +186,7 @@ class RedisLocationStore:
                 lon=lon_val,
                 timestamp=ts,
                 skills=skills,
+                fatigue_score=calc_fatigue,
             ))
 
         return results

@@ -24,6 +24,7 @@ dependencies:
   http: ^1.1.2
   geolocator: ^14.0.2
   web: ^1.1.1
+  nearby_connections: ^4.3.0
 
 dev_dependencies:
   flutter_test:

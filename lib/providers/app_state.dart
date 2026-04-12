@@ -7,11 +7,13 @@ import '../models/user_model.dart';
 import '../models/crisis_alert_model.dart';
 import '../services/api_client.dart';
 import '../services/location_service.dart';
+import '../services/mesh_sync_service.dart';
 
 class AppState extends ChangeNotifier {
   // Current user
   ApiClient? _apiClient;
   LocationService? _locationService;
+  MeshSyncService? _meshSyncService;
   UserRole _currentRole = UserRole.volunteer; 
   AppUser? _currentUser;
   bool _isLoadingUser = false;
@@ -134,6 +136,11 @@ class AppState extends ChangeNotifier {
           isAvailable: data['is_available'] ?? true,
           createdAt: _parseBackendDate(data['created_at']),
         );
+        
+        // Initialize Mesh Sync Engine (BLE/P2P) for offline environments
+        _meshSyncService = MeshSyncService(userName: _currentUser!.id);
+        _meshSyncService!.startMeshNetwork();
+        
       } else {
         _backendError = "Permission denied or backend error. Code: ${response.statusCode}";
       }

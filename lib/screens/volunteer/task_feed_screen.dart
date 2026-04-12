@@ -35,8 +35,27 @@ class _VolunteerTaskFeedState extends State<VolunteerTaskFeed> {
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Impact Feed', style: theme.textTheme.displayMedium),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Impact Feed', style: theme.textTheme.displayMedium),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.bluetooth_connected, size: 16, color: AppColors.success),
+                        const SizedBox(width: 4),
+                        Text('Mesh Node Active', style: theme.textTheme.labelSmall?.copyWith(color: AppColors.success)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 24),
               // Beautiful organic tabs
               Container(

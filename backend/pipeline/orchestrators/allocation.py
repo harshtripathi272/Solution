@@ -53,13 +53,21 @@ class AllocationEngine:
                            f"within {radius_km}km with skills={skills_req}!")
             return
 
-        # GEOSEARCH already returns results sorted nearest-first.
         if urgency > 0:
             multiplier = 2.0 + (urgency * 3.0)
             target_count = max(int(event.skills_required.min_volunteers_needed * multiplier), 5)
         else:
             target_count = max(event.skills_required.min_volunteers_needed * 3, 5)
 
+        # --- Inject Fatigue Penalty into Dispatch Scoring ---
+        # `nearby` is naturally geographically sorted by GEOSEARCH. 
+        # We use their positional index as a geographic distance penalty score (0 is closest).
+        def dispatch_score(vol) -> float:
+            distance_rank = nearby.index(vol) 
+            # Inject fatigue computation: High fatigue forces them to the back of the queue
+            return float(distance_rank) + (vol.fatigue_score * 5.0)
+
+        nearby.sort(key=dispatch_score)
         dispatched = nearby[:target_count]
 
         logger.info(

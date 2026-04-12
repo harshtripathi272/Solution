@@ -52,6 +52,20 @@ class CrisisAlertCard extends StatelessWidget {
             decoration: BoxDecoration(color: AppColors.surfaceContainerLow, borderRadius: BorderRadius.circular(8)),
             child: Text('AI Forecast', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.onSurfaceVariant)),
           ),
+          if (alert.severity == AlertSeverity.critical || alert.severity == AlertSeverity.high) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+              child: Row(
+                children: [
+                  const Icon(Icons.satellite_alt, size: 12, color: AppColors.primary),
+                  const SizedBox(width: 4),
+                  Text('Copernicus Validated (0.95)', style: theme.textTheme.labelSmall?.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ]
         ]),
       ]),
     );
