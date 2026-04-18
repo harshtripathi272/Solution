@@ -29,6 +29,7 @@ from typing import Optional
 from pipeline.core.pubsub import broker
 from pipeline.core.schemas import UnifiedIngestionEvent, to_crisis_event, FALLBACK_INDIA_LAT, FALLBACK_INDIA_LON
 from pipeline.processing.extraction_strategy import extraction_strategy_router
+from pipeline.processing.community_graph import community_graph_service
 from pipeline.processing.geocoding import geocoding_service
 from pipeline.processing.geohash import encode as geohash_encode
 from pipeline.processing.aggregation import aggregation_layer
@@ -159,6 +160,17 @@ class UnifiedPipeline:
         tier = _infer_source_tier(event.source)
         event = event.model_copy(update={"source_tier": tier})
 
+        community_context = community_graph_service.resolve_community(event)
+        if community_context:
+            event = event.model_copy(
+                update={
+                    "metadata": {
+                        **event.metadata,
+                        **community_context,
+                    },
+                }
+            )
+
         # Step 5 — Aggregation (dedup + score merge)
         is_duplicate, merged_score = aggregation_layer.process(
             event_id=event.id,
@@ -235,6 +247,7 @@ class UnifiedPipeline:
             bigquery_store.append(event, final_score),
             bigquery_store.append_severity_event(event, severity_payload),
             bigquery_store.append_severity_timeseries(event, severity_payload),
+            community_graph_service.project_event(event, severity_payload),
         ]
         if event.document_metadata is not None:
             storage_tasks.append(bigquery_store.append_document_event(event, final_score))
