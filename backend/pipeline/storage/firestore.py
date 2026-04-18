@@ -78,6 +78,7 @@ class FirestoreStore:
     _COLLECTION = "need_regions"
     _DOCUMENT_REGISTRY_COLLECTION = "document_registry"
     _CHRONIC_COLLECTION = "chronic_scores"
+    _COMMUNITY_PROFILES_COLLECTION = "community_profiles"
     _PIPELINE_ALERTS_COLLECTION = "pipeline_alerts"
     _SEVERITY_FEEDBACK_COLLECTION = "severity_feedback"
 
@@ -415,6 +416,69 @@ class FirestoreStore:
         except Exception as exc:
             logger.error("[FirestoreStore] get_severity_feedback failed for %s: %s", doc_id, exc)
             return None
+
+    async def upsert_community_projection(self, projection) -> None:
+        """Persist a denormalized community graph snapshot for offline reads."""
+        db = self._get_db()
+        if not db or not projection:
+            return
+
+        community = projection.community
+        community_id = str(community.get("id", "")).strip()
+        if not community_id:
+            return
+
+        now = datetime.now(timezone.utc)
+        payload = {
+            "community": community,
+            "report": projection.event,
+            "ngo": projection.ngo,
+            "needs": projection.needs,
+            "resources": projection.resources,
+            "similarity": projection.similarity,
+            "coverage_gaps": projection.coverage_gaps,
+            "coordination_opportunities": projection.coordination_opportunities,
+            "matrix": projection.matrix,
+            "provenance": projection.metadata,
+            "updated_at": now,
+        }
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.collection(self._COMMUNITY_PROFILES_COLLECTION).document(community_id).set(payload, merge=True),
+            )
+        except Exception as exc:
+            logger.error("[FirestoreStore] upsert_community_projection failed for %s: %s", community_id, exc)
+
+    async def get_community_projection(self, community_id: str) -> dict | None:
+        db = self._get_db()
+        if not db or not community_id:
+            return None
+        try:
+            doc = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.collection(self._COMMUNITY_PROFILES_COLLECTION).document(community_id).get(),
+            )
+            return doc.to_dict() if doc.exists else None
+        except Exception as exc:
+            logger.error("[FirestoreStore] get_community_projection failed for %s: %s", community_id, exc)
+            return None
+
+    async def list_community_projections(self, limit: int = 20) -> list[dict]:
+        db = self._get_db()
+        if not db:
+            return []
+
+        def _stream() -> list[Any]:
+            return list(db.collection(self._COMMUNITY_PROFILES_COLLECTION).limit(limit).stream())
+
+        try:
+            docs = await asyncio.get_event_loop().run_in_executor(None, _stream)
+            return [doc.to_dict() for doc in docs if doc.exists]
+        except Exception as exc:
+            logger.error("[FirestoreStore] list_community_projections failed: %s", exc)
+            return []
 
 
 # Global singleton

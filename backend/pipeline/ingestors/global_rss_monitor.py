@@ -21,6 +21,7 @@ import feedparser
 from newspaper import Article
 
 from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent
+from pipeline.processing.community_resolver import community_resolver
 from .base import PeriodicIngestor
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,10 @@ COMMUNITY_KEYWORDS = {
     "andhra_pradesh": ["agricultural", "mining", "Andhra", "Pradesh"],
     "general": ["health", "food", "water", "shelter", "livelihood", "displacement"],
 }
+
+# Inject target communities so we specifically monitor them
+for comm in community_resolver.communities:
+    COMMUNITY_KEYWORDS[comm["id"]] = comm.get("keywords", [])
 
 # Crisis classification keywords
 CRISIS_KEYWORDS = {
@@ -177,7 +182,13 @@ class GlobalRSSMonitor(PeriodicIngestor):
                     confidence = self._calculate_confidence(text_lower, region)
 
                     # Use fallback coordinates for now (refined by NER in unified pipeline)
-                    lat, lon = FALLBACK_INDIA_COORDS
+                    community_match = community_resolver.resolve(text_lower)
+                    community_id = None
+                    if community_match:
+                        lat, lon = community_match["latitude"], community_match["longitude"]
+                        community_id = community_match["id"]
+                    else:
+                        lat, lon = FALLBACK_INDIA_COORDS
 
                     # Create unique event ID
                     raw_id = f"rss:{hashlib.md5(article_url.encode()).hexdigest()}"
@@ -199,6 +210,8 @@ class GlobalRSSMonitor(PeriodicIngestor):
                             "article_text": text[:500],  # Store snippet for debugging
                         },
                     )
+                    if community_id:
+                        event.metadata["community_id"] = community_id
                     events.append(event)
 
                 except Exception as article_exc:

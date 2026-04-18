@@ -27,6 +27,7 @@ from pipeline.processing.multimodal_preprocessor import multimodal_preprocessor
 from pipeline.core.pubsub import broker, TOPIC_INGESTION_NORMALIZED
 from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent
 from api import heatmap_router
+from api.community_graph import router as community_graph_router
 
 class RegisterRequest(BaseModel):
     requested_role: str = "volunteer"
@@ -124,6 +125,7 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 app.include_router(heatmap_router)
+app.include_router(community_graph_router)
 
 _heatmap_ui_path = Path(__file__).resolve().parent.parent / "ui" / "heatmap"
 if _heatmap_ui_path.exists():

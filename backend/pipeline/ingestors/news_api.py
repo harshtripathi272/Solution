@@ -3,12 +3,17 @@ import logging
 from datetime import datetime, timezone
 
 from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent
+from pipeline.processing.community_resolver import community_resolver
 from .base import PeriodicIngestor
 
 logger = logging.getLogger(__name__)
 
 
 KEYWORDS = ["flood", "earthquake", "health", "shortage", "cyclone", "fire"]
+
+for comm in community_resolver.communities:
+    KEYWORDS.extend(comm.get("keywords", []))
+
 FALLBACK_INDIA_COORDS = (20.5937, 78.9629)
 
 
@@ -58,7 +63,15 @@ class IndiaNewsIngestor(PeriodicIngestor):
                 continue
 
             timestamp = self._parse_timestamp(article.get("publishedAt"))
-            lat, lon = FALLBACK_INDIA_COORDS
+            
+            community_match = community_resolver.resolve(text)
+            community_id = None
+            if community_match:
+                lat, lon = community_match["latitude"], community_match["longitude"]
+                community_id = community_match["id"]
+            else:
+                lat, lon = FALLBACK_INDIA_COORDS
+                
             need_type = self._need_type(text)
             severity = "high" if any(x in text for x in ["severe", "critical", "deaths"]) else "moderate"
             source_name = (article.get("source") or {}).get("name", "NewsAPI")
@@ -83,6 +96,9 @@ class IndiaNewsIngestor(PeriodicIngestor):
                     },
                 )
             )
+            if community_id:
+                events[-1].metadata["community_id"] = community_id
+                
         return events
 
     async def _fetch_newsdata(self) -> list[UnifiedIngestionEvent]:
@@ -106,7 +122,15 @@ class IndiaNewsIngestor(PeriodicIngestor):
                 continue
 
             timestamp = self._parse_timestamp(article.get("pubDate"))
-            lat, lon = FALLBACK_INDIA_COORDS
+            
+            community_match = community_resolver.resolve(text)
+            community_id = None
+            if community_match:
+                lat, lon = community_match["latitude"], community_match["longitude"]
+                community_id = community_match["id"]
+            else:
+                lat, lon = FALLBACK_INDIA_COORDS
+                
             need_type = self._need_type(text)
             severity = "high" if any(x in text for x in ["severe", "critical", "deaths"]) else "moderate"
 
@@ -129,6 +153,9 @@ class IndiaNewsIngestor(PeriodicIngestor):
                     },
                 )
             )
+            if community_id:
+                events[-1].metadata["community_id"] = community_id
+                
         return events
 
     def _need_type(self, text: str) -> str:
