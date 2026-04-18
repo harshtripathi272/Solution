@@ -5,11 +5,22 @@ from datetime import datetime, timezone
 
 from severity_engine.constants import CHRONIC_DECAY_LAMBDA
 from severity_engine.utils import clamp01, safe_float
+from pipeline.processing.community_resolver import community_resolver
+
+def _get_community_baseline(event) -> dict:
+    metadata = getattr(event, "metadata", {}) or {}
+    cid = metadata.get("community_id")
+    if cid:
+        for c in community_resolver.communities:
+            if c["id"] == cid:
+                return c.get("default_chronic_baseline", {})
+    return {}
 
 
 def _infrastructure_gap_score(event) -> float:
     metadata = getattr(event, "metadata", {}) or {}
-    gaps = metadata.get("infrastructure_gaps", []) or []
+    baseline = _get_community_baseline(event)
+    gaps = metadata.get("infrastructure_gaps") or baseline.get("infrastructure_gaps", [])
     text = (getattr(event, "description", "") or "").lower()
 
     if "no handpump" in text:
@@ -38,7 +49,8 @@ def _infrastructure_gap_score(event) -> float:
 
 def _vulnerability_score(event) -> float:
     metadata = getattr(event, "metadata", {}) or {}
-    groups = metadata.get("vulnerable_groups", []) or []
+    baseline = _get_community_baseline(event)
+    groups = metadata.get("vulnerable_groups") or baseline.get("vulnerable_groups", [])
     text = (getattr(event, "description", "") or "").lower()
 
     score = 0.0
@@ -58,6 +70,12 @@ def _vulnerability_score(event) -> float:
 def _historical_recurrence_score(event) -> float:
     metadata = getattr(event, "metadata", {}) or {}
     freq = safe_float(metadata.get("historical_crisis_frequency"), 0.0)
+    
+    if freq == 0.0:
+        baseline = _get_community_baseline(event)
+        mal_rate = safe_float(baseline.get("malnutrition_rate"), 0.0)
+        # Use malnutrition rate as an analog proxy for historical / persistent crisis severity
+        freq = mal_rate * 15.0
     # Allow either raw count or already normalized value.
     if freq > 1.0:
         return clamp01(freq / 12.0)

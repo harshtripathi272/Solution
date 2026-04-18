@@ -1,0 +1,66 @@
+[
+  {
+    "id": "mah_melghat_dharni",
+    "region": "Maharashtra",
+    "district": "Amravati",
+    "block": "Dharni",
+    "name": "Melghat Tribal Belt (Dharni)",
+    "keywords": ["Melghat", "Dharni", "Chikhaldara", "Korku", "Amravati tribal"],
+    "latitude": 21.57,
+    "longitude": 76.96,
+    "target_ngos": ["MAHAN Trust", "KHOJ Melghat", "Amhi Amchya Arogyasathi"],
+    "default_chronic_baseline": {
+      "malnutrition_rate": 0.45,
+      "infrastructure_gaps": ["no handpump", "poor road access", "distant primary health center"],
+      "vulnerable_groups": ["children", "pregnant", "tribal"]
+    }
+  },
+  {
+    "id": "har_nuh_punhana",
+    "region": "Haryana",
+    "district": "Nuh",
+    "block": "Punhana",
+    "name": "Nuh (Mewat)",
+    "keywords": ["Nuh", "Mewat", "Punhana", "Hariana rural poverty"],
+    "latitude": 28.00,
+    "longitude": 77.10,
+    "target_ngos": ["HAQ Centre", "Mewat Vikas Sabha"],
+    "default_chronic_baseline": {
+      "malnutrition_rate": 0.35,
+      "infrastructure_gaps": ["water scarcity", "low female literacy facilities"],
+      "vulnerable_groups": ["children", "women"]
+    }
+  },
+  {
+    "id": "odi_koraput_hq",
+    "region": "Odisha",
+    "district": "Koraput",
+    "block": "Koraput",
+    "name": "Koraput Tribal Belt",
+    "keywords": ["Koraput", "Bonda", "Odisha tribal", "Kalahandi"],
+    "latitude": 18.80,
+    "longitude": 82.70,
+    "target_ngos": ["Gram Vikas", "Pradan", "Vasundhara"],
+    "default_chronic_baseline": {
+      "malnutrition_rate": 0.40,
+      "infrastructure_gaps": ["water access", "forest land conflict"],
+      "vulnerable_groups": ["tribal", "children", "elderly"]
+    }
+  },
+  {
+    "id": "raj_barmer_desert",
+    "region": "Rajasthan",
+    "district": "Barmer",
+    "block": "Barmer",
+    "name": "Barmer Desert Area",
+    "keywords": ["Barmer", "Jaisalmer", "Thar desert villages"],
+    "latitude": 25.75,
+    "longitude": 71.40,
+    "target_ngos": ["Tarun Bharat Sangh", "BAIF", "GRAVIS"],
+    "default_chronic_baseline": {
+      "malnutrition_rate": 0.30,
+      "infrastructure_gaps": ["extreme water scarcity", "drought conditions"],
+      "vulnerable_groups": ["migrant labor", "women", "children"]
+    }
+  }
+]

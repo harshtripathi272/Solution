@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent
+from pipeline.processing.community_resolver import community_resolver
 from .base import PeriodicIngestor
 
 logger = logging.getLogger(__name__)
@@ -92,16 +93,40 @@ class NGOReportsIngestor(PeriodicIngestor):
         description = title or snippet[:160] or "NGO report"
 
         timestamp = self._parse_timestamp(rec.get("published_on"))
-        need_type = self._infer_need_type(f"{title} {snippet} {raw_text}")
-        severity = self._infer_severity(f"{title} {snippet} {raw_text}")
+        combined_text = f"{title} {snippet} {raw_text}"
+        need_type = self._infer_need_type(combined_text)
+        severity = self._infer_severity(combined_text)
 
-        lat, lon = FALLBACK_INDIA_COORDS
         region_tags = rec.get("region_tags") or []
         if not isinstance(region_tags, list):
             region_tags = []
 
+        # Attempt to resolve precise community
+        community_match = community_resolver.resolve(combined_text + " " + " ".join(region_tags))
+        
+        community_id = None
+        if community_match:
+            lat, lon = community_match["latitude"], community_match["longitude"]
+            community_id = community_match["id"]
+        else:
+            lat, lon = FALLBACK_INDIA_COORDS
+
         fingerprint = f"{source_org}|{source_url}|{rec.get('pdf_url', '')}|{rec.get('published_on', '')}"
         event_id = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:24]
+
+        metadata = {
+            "source_org": source_org,
+            "source_url": source_url,
+            "pdf_url": rec.get("pdf_url", ""),
+            "published_on": rec.get("published_on", ""),
+            "region_tags": region_tags,
+            "snippet": snippet[:400],
+            "raw_text": raw_text[:2000],
+            "ingest_channel": "scrapy_playwright",
+            "region": region_tags[0] if region_tags else "india",
+        }
+        if community_id:
+            metadata["community_id"] = community_id
 
         return UnifiedIngestionEvent(
             id=f"NGO-{event_id}",
@@ -112,17 +137,7 @@ class NGOReportsIngestor(PeriodicIngestor):
             severity=severity,
             confidence_score=0.62,
             description=description,
-            metadata={
-                "source_org": source_org,
-                "source_url": source_url,
-                "pdf_url": rec.get("pdf_url", ""),
-                "published_on": rec.get("published_on", ""),
-                "region_tags": region_tags,
-                "snippet": snippet[:400],
-                "raw_text": raw_text[:2000],
-                "ingest_channel": "scrapy_playwright",
-                "region": region_tags[0] if region_tags else "india",
-            },
+            metadata=metadata,
         )
 
     def _parse_timestamp(self, raw: object) -> datetime:

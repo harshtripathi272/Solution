@@ -258,3 +258,57 @@ class VHAIReportsSpider(BaseNGOReportsSpider):
         
         abs_links = [urljoin(response.url, l) for l in links if l]
         return list(dict.fromkeys(abs_links))
+
+
+# --- New Targeted Community Scrapers ---
+
+class MahanTrustSpider(BaseNGOReportsSpider):
+    name = "mahan_trust_reports"
+    source_org = "MAHAN Trust"
+    start_urls = ["https://mahantrustindia.org/reports"]
+
+class KhojMelghatSpider(BaseNGOReportsSpider):
+    name = "khoj_melghat_reports"
+    source_org = "KHOJ Melghat"
+    start_urls = ["https://khojmelghat.org/reports"]
+
+class ArogyasathiSpider(BaseNGOReportsSpider):
+    name = "arogyasathi_reports"
+    source_org = "Amhi Amchya Arogyasathi"
+    start_urls = ["https://arogyasathi.org/reports"]
+
+class HaqCentreSpider(BaseNGOReportsSpider):
+    name = "haq_centre_reports"
+    source_org = "HAQ Centre"
+    start_urls = ["https://haqcrc.org/reports"]
+
+class MewatVikasSpider(BaseNGOReportsSpider):
+    name = "mewat_vikas_reports"
+    source_org = "Mewat Vikas Sabha"
+    start_urls = ["https://mewatvikassabha.org/reports"]
+
+class GramVikasSpider(BaseNGOReportsSpider):
+    name = "gram_vikas_reports"
+    source_org = "Gram Vikas"
+    start_urls = ["https://gramvikas.org/reports"]
+
+class VasundharaSpider(BaseNGOReportsSpider):
+    name = "vasundhara_reports"
+    source_org = "Vasundhara"
+    start_urls = ["https://vasundhara.org/reports"]
+
+class TarunBharatSpider(BaseNGOReportsSpider):
+    name = "tarun_bharat_reports"
+    source_org = "Tarun Bharat Sangh"
+    start_urls = ["https://tarunbharatsangh.in/reports"]
+
+class BaifSpider(BaseNGOReportsSpider):
+    name = "baif_reports"
+    source_org = "BAIF"
+    start_urls = ["https://baif.org.in/reports"]
+
+class GravisSpider(BaseNGOReportsSpider):
+    name = "gravis_reports"
+    source_org = "GRAVIS"
+    start_urls = ["https://gravis.org.in/reports"]
+
