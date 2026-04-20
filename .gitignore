@@ -63,3 +63,4 @@ firebase-debug.log*
 firestore-debug.log*
 ui-debug.log*
 backend/firebase_service_account.json
+*.jsonl

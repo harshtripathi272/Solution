@@ -290,7 +290,61 @@ class MewatVikasSpider(BaseNGOReportsSpider):
 class GramVikasSpider(BaseNGOReportsSpider):
     name = "gram_vikas_reports"
     source_org = "Gram Vikas"
-    start_urls = ["https://gramvikas.org/reports"]
+    start_urls = [
+        "https://gramvikas.org/reports",
+        "https://www.gramvikas.org/focus_area/water/",
+        "https://www.gramvikas.org/focus_area/livelihoods/",
+        "https://www.gramvikas.org/focus_area/sanitation-hygiene/",
+        "https://www.gramvikas.org/focus_area/habitat-technologies/",
+        "https://www.gramvikas.org/focus_area/village-institutions/",
+        "https://www.gramvikas.org/focus_area/education/",
+        "https://www.gramvikas.org/focus_area/disaster-response/",
+    ]
+
+    def parse_listing(self, response: scrapy.http.Response):
+        # Check if this is a focus area page (contains focus_area in URL)
+        if "/focus_area/" in response.url:
+            # Extract HTML content directly from focus area pages
+            title = self._extract_title(response)
+            text_blob = self._extract_text_blob(response)
+            focus_area = response.url.split("/focus_area/")[1].strip("/").replace("-", " ").title()
+            
+            yield {
+                "source_org": self.source_org,
+                "source_url": response.url,
+                "pdf_url": "",
+                "title": f"Focus Area: {focus_area}" if focus_area else title,
+                "published_on": self._extract_date(text_blob),
+                "region_tags": self._extract_regions(text_blob),
+                "snippet": text_blob[:400],
+                "raw_text": text_blob[:2000],
+                "collected_at": datetime.now(timezone.utc).isoformat(),
+            }
+            return
+        
+        # Otherwise, proceed with normal PDF link extraction
+        links = self._extract_candidate_links(response)
+        for link in links:
+            if link in self._seen_urls:
+                continue
+            
+            if self._enqueued >= self.max_pages:
+                break
+
+            if link.lower().endswith(".pdf"):
+                self._enqueued += 1
+                self._seen_urls.add(link)
+                yield self._build_item(response, link, is_pdf=True)
+                continue
+
+            self._enqueued += 1
+            self._seen_urls.add(link)
+            yield scrapy.Request(
+                link,
+                callback=self.parse_report_page,
+                meta={"playwright": True},
+                dont_filter=True,
+            )
 
 class VasundharaSpider(BaseNGOReportsSpider):
     name = "vasundhara_reports"

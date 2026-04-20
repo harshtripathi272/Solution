@@ -6,6 +6,16 @@ from .ngo_sites import (
     SewaBharatReportsSpider,
     NFIReportsSpider,
     VHAIReportsSpider,
+    MahanTrustSpider,
+    KhojMelghatSpider,
+    ArogyasathiSpider,
+    HaqCentreSpider,
+    MewatVikasSpider,
+    GramVikasSpider,
+    VasundharaSpider,
+    TarunBharatSpider,
+    BaifSpider,
+    GravisSpider,
 )
 
 __all__ = [
@@ -16,4 +26,14 @@ __all__ = [
     "SewaBharatReportsSpider",
     "NFIReportsSpider",
     "VHAIReportsSpider",
+    "MahanTrustSpider",
+    "KhojMelghatSpider",
+    "ArogyasathiSpider",
+    "HaqCentreSpider",
+    "MewatVikasSpider",
+    "GramVikasSpider",
+    "VasundharaSpider",
+    "TarunBharatSpider",
+    "BaifSpider",
+    "GravisSpider",
 ]
