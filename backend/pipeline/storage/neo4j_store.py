@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import TYPE_CHECKING, Any
@@ -88,8 +89,41 @@ class Neo4jStore:
         ngo = projection.ngo
 
         return {
-            "community": community,
-            "event": event,
+            "community": {
+                "id": community.get("id"),
+                "name": community.get("name"),
+                "region": community.get("region"),
+                "district": community.get("district"),
+                "block": community.get("block"),
+                "latitude": community.get("latitude"),
+                "longitude": community.get("longitude"),
+                "admin_level": community.get("admin_level"),
+                "resolution_confidence": community.get("resolution_confidence"),
+                "freshness_weight": community.get("freshness_weight"),
+                "baseline_json": json.dumps(community.get("baseline", {}), ensure_ascii=True, sort_keys=True),
+                "embedding": community.get("embedding", []),
+                "target_ngos": community.get("target_ngos", []),
+                "keywords": community.get("keywords", []),
+            },
+            "event": {
+                "id": event.get("id"),
+                "source": event.get("source"),
+                "timestamp": event.get("timestamp"),
+                "description": event.get("description"),
+                "url": event.get("url"),
+                "text": event.get("text"),
+                "confidence_score": event.get("confidence_score"),
+                "severity": event.get("severity"),
+                "composite_urgency": event.get("composite_urgency"),
+                "severity_acute": event.get("severity_acute"),
+                "severity_chronic": event.get("severity_chronic"),
+                "classification": event.get("classification"),
+                "recommended_response_time": event.get("recommended_response_time"),
+                "provenance_json": json.dumps(event.get("provenance", {}), ensure_ascii=True, sort_keys=True),
+                "community_matched_text": event.get("community_matched_text", ""),
+                "community_match_source": event.get("community_match_source", ""),
+                "community_matched_terms": event.get("community_matched_terms", []),
+            },
             "ngo": ngo,
             "needs": projection.needs,
             "resources": projection.resources,
@@ -97,7 +131,6 @@ class Neo4jStore:
             "coverage_gaps": projection.coverage_gaps,
             "coordination_opportunities": projection.coordination_opportunities,
             "matrix": projection.matrix,
-            "metadata": projection.metadata,
         }
 
     @staticmethod
@@ -114,7 +147,7 @@ class Neo4jStore:
             community.admin_level = row.community.admin_level,
             community.resolution_confidence = row.community.resolution_confidence,
             community.freshness_weight = row.community.freshness_weight,
-            community.baseline = row.community.baseline,
+            community.baseline_json = row.community.baseline_json,
             community.embedding = row.community.embedding,
             community.target_ngos = row.community.target_ngos,
             community.keywords = row.community.keywords,
@@ -140,7 +173,7 @@ class Neo4jStore:
             report.severity_chronic = row.event.severity_chronic,
             report.classification = row.event.classification,
             report.recommended_response_time = row.event.recommended_response_time,
-            report.provenance = row.event.provenance,
+            report.provenance_json = row.event.provenance_json,
             report.updated_at = datetime()
 
         MERGE (report)-[pub:PUBLISHED]->(ngo)
@@ -150,8 +183,9 @@ class Neo4jStore:
 
         MERGE (report)-[ment:MENTIONS]->(community)
         SET ment.confidence = row.community.resolution_confidence,
-            ment.matched_text = row.metadata.community_context.community_matched_text,
-            ment.match_source = row.metadata.community_context.community_match_source,
+            ment.matched_text = row.event.community_matched_text,
+            ment.match_source = row.event.community_match_source,
+            ment.matched_terms = row.event.community_matched_terms,
             ment.freshness = row.community.freshness_weight,
             ment.updated_at = datetime()
 

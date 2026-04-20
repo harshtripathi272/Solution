@@ -19,6 +19,7 @@ except ImportError:  # pragma: no cover - optional dependency
 
 _DEFAULT_SPACY_MODEL = "en_core_web_sm"
 _MIN_SCORE = 0.42
+_ALLOW_KEYWORD_FALLBACK = os.getenv("COMMUNITY_ALLOW_KEYWORD_FALLBACK", "false").strip().lower() == "true"
 
 
 @dataclass(slots=True)
@@ -80,16 +81,22 @@ class CommunityResolver:
     @staticmethod
     def _normalize_community(item: dict[str, Any]) -> dict[str, Any]:
         aliases = set()
+        # Keep aliases geo-first so resolution is tied to actual community locations.
         aliases.update(CommunityResolver._split_aliases(item.get("name")))
         aliases.update(CommunityResolver._split_aliases(item.get("district")))
         aliases.update(CommunityResolver._split_aliases(item.get("block")))
         aliases.update(CommunityResolver._split_aliases(item.get("region")))
-        aliases.update(CommunityResolver._split_aliases(item.get("keywords")))
-        aliases.update(CommunityResolver._split_aliases(item.get("target_ngos")))
         for extra in item.get("aliases", []) or []:
             aliases.update(CommunityResolver._split_aliases(extra))
 
         item = dict(item)
+        baseline = dict(item.get("default_chronic_baseline") or {})
+        baseline.setdefault("malnutrition_rate", 0.0)
+        baseline.setdefault("infrastructure_gaps", [])
+        baseline.setdefault("vulnerable_groups", [])
+        item["default_chronic_baseline"] = baseline
+        item.setdefault("keywords", [])
+        item.setdefault("target_ngos", [])
         item["aliases"] = sorted({alias for alias in aliases if alias})
         item.setdefault("admin_level", "village")
         return item
@@ -163,7 +170,7 @@ class CommunityResolver:
                     matched_terms.append(alias)
                     match_source = "ner"
 
-        if not matched_terms and community.get("keywords"):
+        if _ALLOW_KEYWORD_FALLBACK and not matched_terms and community.get("keywords"):
             keywords = community.get("keywords", []) or []
             for keyword in keywords:
                 keyword_norm = self._normalize_text(str(keyword))

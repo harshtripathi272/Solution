@@ -20,11 +20,15 @@ if str(BACKEND_ROOT) not in os.sys.path:
 from pipeline.ingestors.ngo_reports import NGOReportsIngestor
 from pipeline.processing.community_graph import community_graph_service
 from pipeline.processing.geohash import encode as geohash_encode
-from pipeline.storage import firestore_store, neo4j_store
+from pipeline.storage.neo4j_store import neo4j_store
 from severity_engine.acute_calculator import calculate_acute_severity
 from severity_engine.chronic_calculator import calculate_chronic_severity
 from severity_engine.composite_aggregator import aggregate_composite_urgency
-from severity_engine.constants import CLASSIFICATION_TO_SEVERITY_LABEL
+from severity_engine.constants import (
+    CLASSIFICATION_THRESHOLDS,
+    CLASSIFICATION_TO_SEVERITY_LABEL,
+    RESPONSE_TIME_BY_CLASSIFICATION,
+)
 
 
 logger = logging.getLogger("backfill_ngo_reports_to_graph")
@@ -49,13 +53,10 @@ def _read_jsonl(path: Path, max_records: int = 0) -> list[dict[str, Any]]:
 
 
 def _classify(score: float) -> tuple[str, str]:
-    if score < 0.35:
-        return "Moderate", "48h"
-    if score < 0.60:
-        return "Severe", "24h"
-    if score < 0.80:
-        return "Critical", "12h"
-    return "Extreme", "4h"
+    for upper, label, _color, _action in CLASSIFICATION_THRESHOLDS:
+        if score < upper:
+            return label, RESPONSE_TIME_BY_CLASSIFICATION.get(label, "48h")
+    return "Extreme", RESPONSE_TIME_BY_CLASSIFICATION.get("Extreme", "4h")
 
 
 async def _build_severity_payload(event: Any) -> dict[str, Any]:
@@ -87,19 +88,32 @@ async def backfill(
     input_path: Path,
     limit: int,
     dry_run: bool,
+    write_firestore: bool,
 ) -> tuple[int, int, int]:
     if not input_path.exists():
         raise FileNotFoundError(f"Input JSONL not found: {input_path}")
 
     records = _read_jsonl(input_path, max_records=limit)
+    logger.info("Loaded %d records from %s", len(records), input_path)
 
     ingestor = NGOReportsIngestor(interval_seconds=3600, max_reports=max(1, limit or 1))
+    logger.info("Initialized NGOReportsIngestor")
+    firestore_store = None
+    if write_firestore:
+        from pipeline.storage.firestore import firestore_store as _firestore_store
+
+        firestore_store = _firestore_store
+        logger.info("Firestore writes enabled")
+    else:
+        logger.info("Firestore writes disabled (Neo4j only mode)")
 
     processed = 0
     projected = 0
     skipped = 0
 
-    for rec in records:
+    for idx, rec in enumerate(records, start=1):
+        if idx <= 3 or idx % 10 == 0:
+            logger.info("Processing row %d/%d", idx, len(records))
         event = ingestor._to_event(rec)
         if event is None:
             skipped += 1
@@ -130,7 +144,8 @@ async def backfill(
             continue
 
         await neo4j_store.upsert_projection(projection)
-        await firestore_store.upsert_community_projection(projection)
+        if firestore_store is not None:
+            await firestore_store.upsert_community_projection(projection)
         projected += 1
 
         processed += 1
@@ -161,6 +176,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Build projections without writing to sinks",
     )
+    parser.add_argument(
+        "--with-firestore",
+        action="store_true",
+        help="Also write projections to Firestore (default: Neo4j only)",
+    )
     return parser
 
 
@@ -173,6 +193,7 @@ async def _main_async(args: argparse.Namespace) -> int:
         input_path=input_path,
         limit=max(0, int(args.limit)),
         dry_run=bool(args.dry_run),
+        write_firestore=bool(args.with_firestore),
     )
 
     logger.info("Backfill done | processed=%d projected=%d skipped=%d", processed, projected, skipped)
@@ -181,7 +202,8 @@ async def _main_async(args: argparse.Namespace) -> int:
 
 def main() -> int:
     load_dotenv(PROJECT_ROOT / ".env")
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s", force=True)
+    logger.info("Backfill script starting")
     parser = _build_parser()
     args = parser.parse_args()
 

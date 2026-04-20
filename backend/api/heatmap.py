@@ -21,35 +21,30 @@ router = APIRouter(prefix="/api/v1", tags=["heatmap"])
 
 
 REGION_CENTRES: dict[str, tuple[float, float]] = {
-    "assam": (26.2006, 92.9376),
-    "bihar": (25.0961, 85.3131),
-    "bundelkhand": (25.5, 79.5),
-    "chhattisgarh": (21.2514, 81.6296),
-    "jharkhand": (23.6102, 85.2799),
-    "marathwada": (19.7515, 75.7139),
+    "maharashtra": (21.57, 76.96),
+    "haryana": (28.00, 77.10),
+    "odisha": (18.80, 82.70),
+    "rajasthan": (25.75, 71.40),
 }
 
 REGION_BOUNDARY_FEATURES: list[dict[str, Any]] = [
     {
         "type": "Feature",
         "properties": {
-            "region_id": "bihar",
-            "name": "Bihar",
+            "region_id": "maharashtra",
+            "name": "Maharashtra",
         },
         "geometry": {
             "type": "Polygon",
             "coordinates": [
                 [
-                    [83.40, 24.00],
-                    [84.55, 24.15],
-                    [86.20, 24.10],
-                    [87.60, 25.15],
-                    [88.20, 26.35],
-                    [87.30, 27.30],
-                    [85.95, 27.45],
-                    [84.30, 26.65],
-                    [83.55, 25.55],
-                    [83.40, 24.00],
+                    [72.0, 15.5],
+                    [76.2, 15.5],
+                    [80.6, 18.3],
+                    [80.6, 22.1],
+                    [76.4, 22.8],
+                    [72.0, 22.8],
+                    [72.0, 15.5],
                 ]
             ],
         },
@@ -57,23 +52,20 @@ REGION_BOUNDARY_FEATURES: list[dict[str, Any]] = [
     {
         "type": "Feature",
         "properties": {
-            "region_id": "jharkhand",
-            "name": "Jharkhand",
+            "region_id": "haryana",
+            "name": "Haryana",
         },
         "geometry": {
             "type": "Polygon",
             "coordinates": [
                 [
-                    [83.20, 21.90],
-                    [84.85, 22.00],
-                    [86.55, 22.20],
-                    [87.90, 23.35],
-                    [87.80, 24.80],
-                    [86.80, 25.40],
-                    [85.00, 25.30],
-                    [83.70, 24.60],
-                    [83.30, 23.10],
-                    [83.20, 21.90],
+                    [74.2, 27.5],
+                    [76.2, 27.5],
+                    [77.7, 28.3],
+                    [77.7, 30.9],
+                    [75.8, 30.9],
+                    [74.2, 30.2],
+                    [74.2, 27.5],
                 ]
             ],
         },
@@ -81,25 +73,20 @@ REGION_BOUNDARY_FEATURES: list[dict[str, Any]] = [
     {
         "type": "Feature",
         "properties": {
-            "region_id": "assam",
-            "name": "Assam",
+            "region_id": "odisha",
+            "name": "Odisha",
         },
         "geometry": {
             "type": "Polygon",
             "coordinates": [
                 [
-                    [89.80, 24.10],
-                    [91.00, 24.30],
-                    [92.60, 24.60],
-                    [94.10, 25.00],
-                    [95.60, 26.00],
-                    [96.10, 27.20],
-                    [95.00, 27.80],
-                    [93.40, 27.50],
-                    [91.60, 27.20],
-                    [90.20, 26.30],
-                    [89.80, 25.00],
-                    [89.80, 24.10],
+                    [81.4, 17.7],
+                    [83.8, 17.7],
+                    [87.5, 19.4],
+                    [87.5, 22.7],
+                    [84.4, 22.8],
+                    [81.4, 21.8],
+                    [81.4, 17.7],
                 ]
             ],
         },
@@ -107,47 +94,20 @@ REGION_BOUNDARY_FEATURES: list[dict[str, Any]] = [
     {
         "type": "Feature",
         "properties": {
-            "region_id": "bundelkhand",
-            "name": "Bundelkhand",
+            "region_id": "rajasthan",
+            "name": "Rajasthan",
         },
         "geometry": {
             "type": "Polygon",
             "coordinates": [
                 [
-                    [78.10, 23.30],
-                    [79.50, 23.40],
-                    [80.80, 23.80],
-                    [81.80, 24.60],
-                    [81.90, 25.80],
-                    [81.20, 26.50],
-                    [79.80, 26.40],
-                    [78.60, 25.80],
-                    [78.10, 24.80],
-                    [78.10, 23.30],
-                ]
-            ],
-        },
-    },
-    {
-        "type": "Feature",
-        "properties": {
-            "region_id": "marathwada",
-            "name": "Marathwada",
-        },
-        "geometry": {
-            "type": "Polygon",
-            "coordinates": [
-                [
-                    [74.90, 17.20],
-                    [75.90, 17.00],
-                    [77.20, 17.20],
-                    [78.40, 18.00],
-                    [78.60, 19.20],
-                    [78.00, 20.10],
-                    [76.80, 20.50],
-                    [75.40, 20.20],
-                    [74.90, 19.00],
-                    [74.90, 17.20],
+                    [69.2, 23.1],
+                    [73.9, 23.1],
+                    [76.7, 24.3],
+                    [76.7, 30.2],
+                    [72.3, 30.2],
+                    [69.2, 27.8],
+                    [69.2, 23.1],
                 ]
             ],
         },

@@ -36,11 +36,10 @@ class _HeatmapScreenState extends State<HeatmapScreen>
   final bool _isAutoRefreshEnabled = true;
 
   final List<String> _regions = [
-    'bihar',
-    'jharkhand',
-    'assam',
-    'bundelkhand',
-    'marathwada',
+    'maharashtra',
+    'haryana',
+    'odisha',
+    'rajasthan',
   ];
 
   final List<String> _needTypes = [
@@ -55,11 +54,10 @@ class _HeatmapScreenState extends State<HeatmapScreen>
   final List<String> _timeRanges = ['7d', '30d', '90d'];
 
   final Map<String, LatLng> _regionCentres = const {
-    'bihar': LatLng(25.0961, 85.3131),
-    'jharkhand': LatLng(23.6102, 85.2799),
-    'assam': LatLng(26.2006, 92.9376),
-    'bundelkhand': LatLng(25.5000, 79.5000),
-    'marathwada': LatLng(19.7515, 75.7139),
+    'maharashtra': LatLng(21.57, 76.96),
+    'haryana': LatLng(28.00, 77.10),
+    'odisha': LatLng(18.80, 82.70),
+    'rajasthan': LatLng(25.75, 71.40),
   };
 
   @override
