@@ -228,22 +228,22 @@ class PradanReportsSpider(BaseNGOReportsSpider):
         return super()._extract_pdf_url(response)
 
 
-class SphereIndiaReportsSpider(BaseNGOReportsSpider):
-    name = "sphere_india_reports"
-    source_org = "Sphere India"
-    start_urls = ["https://www.sphereindia.org.in/situation-reports/"]
+# class SphereIndiaReportsSpider(BaseNGOReportsSpider):
+#     name = "sphere_india_reports"
+#     source_org = "Sphere India"
+#     start_urls = ["https://www.sphereindia.org.in/situation-reports/"]
 
 
-class SewaBharatReportsSpider(BaseNGOReportsSpider):
-    name = "sewa_bharat_reports"
-    source_org = "SEWA Bharat"
-    start_urls = ["https://sewabharat.org/research/"]
+# class SewaBharatReportsSpider(BaseNGOReportsSpider):
+#     name = "sewa_bharat_reports"
+#     source_org = "SEWA Bharat"
+#     start_urls = ["https://sewabharat.org/research/"]
 
 
-class NFIReportsSpider(BaseNGOReportsSpider):
-    name = "nfi_reports"
-    source_org = "National Foundation for India"
-    start_urls = ["https://nfi.org.in/climate-report"]
+# class NFIReportsSpider(BaseNGOReportsSpider):
+#     name = "nfi_reports"
+#     source_org = "National Foundation for India"
+#     start_urls = ["https://nfi.org.in/climate-report"]
 
 
 class VHAIReportsSpider(BaseNGOReportsSpider):
@@ -309,10 +309,7 @@ class HaqCentreSpider(BaseNGOReportsSpider):
     source_org = "HAQ Centre"
     start_urls = ["https://www.haqcrc.org/about-us/annual-reports-accounts/"]
 
-# class MewatVikasSpider(BaseNGOReportsSpider):
-#     name = "mewat_vikas_reports"
-#     source_org = "Mewat Vikas Sabha"
-#     start_urls = ["https://mewatvikassabha.org/reports"]
+
 
 class GramVikasSpider(BaseNGOReportsSpider):
     name = "gram_vikas_reports"
@@ -383,13 +380,13 @@ class GramVikasSpider(BaseNGOReportsSpider):
 #     source_org = "Tarun Bharat Sangh"
 #     start_urls = ["https://tarunbharatsangh.in/reports"]
 
-# class BaifSpider(BaseNGOReportsSpider):
-#     name = "baif_reports"
-#     source_org = "BAIF"
-#     start_urls = ["https://baif.org.in/reports"]
+class BaifSpider(BaseNGOReportsSpider):
+    name = "baif_reports"
+    source_org = "BAIF"
+    start_urls = ["https://baif.org.in/knowledge-hub/publication/research-papers-case-studies/"]
 
-# class GravisSpider(BaseNGOReportsSpider):
-#     name = "gravis_reports"
-#     source_org = "GRAVIS"
-#     start_urls = ["https://gravis.org.in/reports"]
+class GravisSpider(BaseNGOReportsSpider):
+    name = "gravis_reports"
+    source_org = "GRAVIS"
+    start_urls = ["https://gravis.org.in/research-studies-and-publications/"]
 

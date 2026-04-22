@@ -96,6 +96,14 @@ def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     a = sin(d_lat / 2.0) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lon / 2.0) ** 2
     return 2.0 * radius * atan2(sqrt(a), sqrt(1.0 - a))
 
+
+def _to_iso_string(value: Any) -> str | None:
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).isoformat()
+    if isinstance(value, str) and value:
+        return value
+    return None
+
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -520,6 +528,9 @@ async def get_tasks(
     elif user_location is not None:
         anchor_lat, anchor_lon = user_location.lat, user_location.lon
         location_source = "shared_location"
+    elif current_user.role in {UserRole.coordinator, UserRole.ngo_worker}:
+        anchor_lat = anchor_lon = None
+        location_source = "global"
     else:
         raise HTTPException(
             status_code=400,
@@ -528,36 +539,87 @@ async def get_tasks(
 
     raw_tasks = await firestore_store.list_volunteer_area_tasks(limit=max(50, limit * 5), active_only=True)
 
-    filtered: list[dict[str, Any]] = []
-    for task in raw_tasks:
+    def _sdg_tags_for_need(need_type: str) -> list[int]:
+        mapping = {
+            "medical": [3],
+            "food": [2],
+            "flood": [6, 11],
+            "cyclone": [6, 11],
+            "fire": [11],
+            "other": [1],
+        }
+        return mapping.get(need_type, [1])
+
+    flattened: list[dict[str, Any]] = []
+    for task_group in raw_tasks:
+        community_name = str(task_group.get("community_name") or task_group.get("community_id") or "Community")
+        community_id = str(task_group.get("community_id") or "").strip()
+        geohash = str(task_group.get("geohash") or "").strip()
+        lat = task_group.get("lat")
+        lon = task_group.get("lon")
         try:
-            lat = float(task.get("lat"))
-            lon = float(task.get("lon"))
+            lat_value = float(lat)
+            lon_value = float(lon)
         except (TypeError, ValueError):
             continue
 
-        distance = _distance_km(anchor_lat, anchor_lon, lat, lon)
-        if distance > radius_km:
-            continue
+        distance_km = None
+        if anchor_lat is not None and anchor_lon is not None:
+            distance = _distance_km(anchor_lat, anchor_lon, lat_value, lon_value)
+            if distance > radius_km:
+                continue
+            distance_km = round(distance, 2)
 
-        task_payload = {
-            **task,
-            "distance_km": round(distance, 2),
-        }
-        filtered.append(task_payload)
+        for idx, task in enumerate(task_group.get("tasks", []) or [], start=1):
+            need_type = str(task.get("need_type") or task_group.get("need_type") or "other")
+            priority = float(task.get("priority", task_group.get("composite_urgency", 0.0)) or 0.0)
+            sdg_tags = task.get("sdg_tags") or _sdg_tags_for_need(need_type)
+            historical_drivers = task.get("historical_drivers") if isinstance(task.get("historical_drivers"), dict) else {}
+            infrastructure_gaps = historical_drivers.get("infrastructure_gaps", []) if isinstance(historical_drivers.get("infrastructure_gaps", []), list) else []
+            flattened.append(
+                {
+                    "id": task.get("task_code") or f"{community_id or geohash}:{idx}",
+                    "title": task.get("title") or f"Support {community_name}",
+                    "description": (
+                        f"Historical context task for {community_name}. "
+                        f"Drivers: {', '.join(str(item) for item in infrastructure_gaps[:3])}."
+                    ),
+                    "needType": need_type,
+                    "location": community_name,
+                    "latitude": lat_value,
+                    "longitude": lon_value,
+                    "ward": community_name,
+                    "urgency": task_group.get("severity_classification") or "Moderate",
+                    "requiredSkills": list(task.get("required_skills") or []),
+                    "estimatedPeopleAffected": int(max(1, round(priority * 100))),
+                    "assignedTo": None,
+                    "status": "open",
+                    "sdgTags": [int(tag) for tag in sdg_tags],
+                    "createdFromReportId": task_group.get("latest_event", {}).get("event_id"),
+                    "ngoId": community_id or str(task_group.get("source") or "community"),
+                    "createdAt": _as_iso(task_group.get("updated_at")) or datetime.now(timezone.utc).isoformat(),
+                    "completedAt": None,
+                    "matchScore": priority,
+                    "distance_km": distance_km,
+                    "community_id": community_id,
+                    "community_name": community_name,
+                    "historical_drivers": historical_drivers,
+                    "volunteer_gap": task.get("volunteer_gap", 0),
+                }
+            )
 
-    filtered.sort(
+    flattened.sort(
         key=lambda item: (
-            -float(item.get("composite_urgency", 0.0) or 0.0),
-            float(item.get("distance_km", 9999.0) or 9999.0),
+            -float(item.get("matchScore", 0.0) or 0.0),
+            float(item.get("distance_km", 9999.0) if item.get("distance_km") is not None else 9999.0),
         )
     )
 
     return {
         "status": "ok",
         "location_source": location_source,
-        "anchor": {"lat": anchor_lat, "lon": anchor_lon},
+        "anchor": {"lat": anchor_lat, "lon": anchor_lon} if anchor_lat is not None else None,
         "radius_km": radius_km,
-        "count": min(limit, len(filtered)),
-        "tasks": filtered[:limit],
+        "count": min(limit, len(flattened)),
+        "tasks": flattened[:limit],
     }

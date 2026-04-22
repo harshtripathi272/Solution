@@ -74,35 +74,35 @@ class GLiNERExtractor:
             except ImportError:
                 global_GLiNER = None
                 
+            repo_id = "urchade/gliner_base" if global_GLiNER is not None else None
+            
             if global_GLiNER is not None:
-                repo_id = "urchade/gliner_base"
-            
-            # Silence annoying HuggingFace warnings and download logs
-            import os
-            import warnings
-            import logging as py_logging
-            from pathlib import Path
-            
-            os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
-            warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
-            py_logging.getLogger("huggingface_hub").setLevel(py_logging.ERROR)
-            
-            cache_dir = os.getenv("HF_HOME", os.path.expanduser("~/.cache/huggingface/hub"))
-            folder_name = "models--" + repo_id.replace("/", "--")
-            model_path = Path(cache_dir) / folder_name
-            
-            exists_locally = model_path.exists()
-            
-            if not exists_locally:
-                print(f"\n[GLiNER] ⚠️ Model '{repo_id}' not found locally. Downloading ~150MB now. Please wait...")
-                logger.info("Downloading urchade/gliner_base model...")
-            else:
-                print(f"\n[GLiNER] ✅ Model found locally! Loading instantly offline...")
-                logger.debug("Loading cached urchade/gliner_base model...")
+                # Silence annoying HuggingFace warnings and download logs
+                import os
+                import warnings
+                import logging as py_logging
+                from pathlib import Path
                 
-            # Use local_files_only=True to prevent "Fetching X files" logs if already cached
-            self.model = GLiNER.from_pretrained(repo_id, local_files_only=exists_locally)
-            logger.info("[GLiNERExtractor] GLiNER Model Ready.")
+                os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+                warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
+                py_logging.getLogger("huggingface_hub").setLevel(py_logging.ERROR)
+                
+                cache_dir = os.getenv("HF_HOME", os.path.expanduser("~/.cache/huggingface/hub"))
+                folder_name = "models--" + repo_id.replace("/", "--")
+                model_path = Path(cache_dir) / folder_name
+                
+                exists_locally = model_path.exists()
+                
+                if not exists_locally:
+                    print(f"\n[GLiNER] ⚠️ Model '{repo_id}' not found locally. Downloading ~150MB now. Please wait...")
+                    logger.info("Downloading urchade/gliner_base model...")
+                else:
+                    print(f"\n[GLiNER] ✅ Model found locally! Loading instantly offline...")
+                    logger.debug("Loading cached urchade/gliner_base model...")
+                    
+                # Use local_files_only=True to prevent "Fetching X files" logs if already cached
+                self.model = GLiNER.from_pretrained(repo_id, local_files_only=exists_locally)
+                logger.info("[GLiNERExtractor] GLiNER Model Ready.")
 
     def extract(self, text: str) -> dict:
         """Fast offline extraction of labels from text via Matrix Multiplication."""

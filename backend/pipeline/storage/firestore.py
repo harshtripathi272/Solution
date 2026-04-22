@@ -670,6 +670,49 @@ class FirestoreStore:
             logger.error("[FirestoreStore] list_volunteer_area_tasks failed: %s", exc)
             return []
 
+    async def list_recent_events(self, limit: int = 50, since: "datetime" | None = None) -> list[dict]:
+        """
+        Fetch recent ingestion events from need_regions/{geohash}/events.
+        
+        Returns events sorted by timestamp (descending), optionally filtered by 'since'.
+        """
+        db = self._get_db()
+        if not db:
+            return []
+
+        def _collect_events() -> list[dict]:
+            from datetime import datetime, timezone
+            
+            events: list[dict] = []
+            # Fetch all geohash regions
+            regions = list(db.collection(self._COLLECTION).stream())
+            
+            for region_doc in regions:
+                # Fetch events subcollection for each region
+                events_query = region_doc.reference.collection("events").order_by(
+                    "timestamp", direction=self._firestore.Query.DESCENDING
+                ).limit(limit)
+                
+                if since:
+                    # Filter by timestamp if provided
+                    events_query = events_query.where("timestamp", ">=", since)
+                
+                for event_doc in events_query.stream():
+                    if event_doc.exists:
+                        event_data = event_doc.to_dict()
+                        event_data["geohash"] = region_doc.id  # Add geohash from parent
+                        events.append(event_data)
+            
+            # Sort globally by timestamp descending and return top N
+            events.sort(key=lambda x: x.get("timestamp", datetime.min), reverse=True)
+            return events[:limit]
+
+        try:
+            return await asyncio.get_event_loop().run_in_executor(None, _collect_events)
+        except Exception as exc:
+            logger.error("[FirestoreStore] list_recent_events failed: %s", exc)
+            return []
+
 
 # Global singleton
 firestore_store = FirestoreStore()

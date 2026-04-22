@@ -23,6 +23,7 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
   String? _error;
   double _timeWindowDays = 180;
   String? _selectedCommunityId;
+  bool _showHeatmap = false; // Toggle for graph/heatmap
 
   @override
   void initState() {
@@ -77,6 +78,11 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
     final overview = _overview;
     final visibleProfiles = _visibleProfiles;
 
+    // Show heatmap if toggled
+    if (_showHeatmap) {
+      return _buildHeatmapView(theme);
+    }
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -99,7 +105,40 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildHero(theme, overview, visibleProfiles),
+                          // Visualization toggle
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: _buildHero(theme, overview, visibleProfiles),
+                              ),
+                              const SizedBox(width: 16),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: AppColors.outlineVariant),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _visualizationButton(
+                                      icon: Icons.hub,
+                                      label: 'Graph',
+                                      isSelected: !_showHeatmap,
+                                      onPressed: () => setState(() => _showHeatmap = false),
+                                    ),
+                                    _visualizationButton(
+                                      icon: Icons.thermostat,
+                                      label: 'Heatmap',
+                                      isSelected: _showHeatmap,
+                                      onPressed: () => setState(() => _showHeatmap = true),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 20),
                           _buildTimeSlider(theme),
                           const SizedBox(height: 20),
@@ -136,6 +175,82 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                       ),
                     ),
                   ),
+      ),
+    );
+  }
+
+  Widget _visualizationButton({
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onPressed,
+  }) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(4),
+      child: Material(
+        color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: isSelected ? AppColors.primary : AppColors.outlineVariant),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: isSelected ? AppColors.primary : AppColors.outlineVariant,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeatmapView(ThemeData theme) {
+    // Import and display the heatmap view
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFfbf9f9), Color(0xFFf2efec), Color(0xFFeef4ef)],
+          stops: [0.0, 0.55, 1.0],
+        ),
+      ),
+      child: SafeArea(
+        child: Stack(
+          children: [
+            // Placeholder for heatmap - in production, embed HeatmapScreen here
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.thermostat, size: 64, color: AppColors.primary.withValues(alpha: 0.3)),
+                  const SizedBox(height: 16),
+                  Text('Heatmap View', style: theme.textTheme.headlineSmall),
+                  const SizedBox(height: 8),
+                  Text('Geographic distribution of community needs', style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 32),
+                  ElevatedButton.icon(
+                    onPressed: () => setState(() => _showHeatmap = false),
+                    icon: const Icon(Icons.hub),
+                    label: const Text('Back to Constellation Map'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -671,10 +786,13 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
     }
 
     final widthIndex = profiles.length.clamp(1, 12);
+    
+    // Create community nodes anchored to their geographic positions
+    final communityNodes = <String, _GraphNode>{};
     for (var index = 0; index < profiles.length; index++) {
       final profile = profiles[index];
-      final normalizedX = ((profile.longitude + 180.0) / 360.0).clamp(0.08, 0.92);
-      final normalizedY = ((90.0 - profile.latitude) / 180.0).clamp(0.08, 0.92);
+      final normalizedX = ((profile.longitude + 180.0) / 360.0).clamp(0.10, 0.90);
+      final normalizedY = ((90.0 - profile.latitude) / 180.0).clamp(0.10, 0.90);
       final base = Offset(normalizedX, normalizedY);
       final communityNode = _GraphNode(
         id: profile.id,
@@ -684,38 +802,68 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
         position: base,
         radius: profile.id == widget.selectedCommunityId ? 0.048 : 0.038,
         metadata: profile,
+        anchor: base, // Keep community nodes anchored to geographic positions
       );
       nodes.add(communityNode);
+      communityNodes[profile.id] = communityNode;
+    }
 
+    // Create NGO nodes and edges with stronger connections
+    for (var index = 0; index < profiles.length; index++) {
+      final profile = profiles[index];
+      final communityNode = communityNodes[profile.id]!;
+      
       final ngos = [
         if (profile.ngo.isNotEmpty) profile.ngo['name']?.toString() ?? profile.ngo['id']?.toString() ?? 'NGO',
         ...profile.targetNgos.take(2),
       ].where((value) => value.trim().isNotEmpty).toList();
 
+      // Create NGO nodes positioned in a circle around the community
       for (var ngoIndex = 0; ngoIndex < ngos.length; ngoIndex++) {
         final angle = (ngoIndex / math.max(1, ngos.length)) * math.pi * 2.0;
-        final offset = Offset(math.cos(angle) * 0.08, math.sin(angle) * 0.08);
+        final offset = Offset(math.cos(angle) * 0.10, math.sin(angle) * 0.10); // Larger offset for better visibility
         final nodeId = '${profile.id}:ngo:$ngoIndex';
-        nodes.add(
-          _GraphNode(
-            id: nodeId,
-            label: ngos[ngoIndex],
-            kind: _GraphNodeKind.ngo,
-            color: _ngoColor(ngoIndex),
-            position: (base + offset).clamp(const Offset(0.06, 0.06), const Offset(0.94, 0.94)),
-            radius: 0.024,
-            metadata: profile,
-          ),
+        final ngoNode = _GraphNode(
+          id: nodeId,
+          label: ngos[ngoIndex],
+          kind: _GraphNodeKind.ngo,
+          color: _ngoColor(ngoIndex),
+          position: (communityNode.position + offset).clamp(const Offset(0.05, 0.05), const Offset(0.95, 0.95)),
+          radius: 0.024,
+          metadata: profile,
+          anchor: communityNode.position + offset, // Anchor NGO relative to community
         );
+        nodes.add(ngoNode);
+
+        // Create strong edges between communities and NGOs
         final edgeNeed = profile.needs.isNotEmpty ? profile.needs[ngoIndex % profile.needs.length] : null;
         edges.add(
           _GraphEdge(
             from: profile.id,
             to: nodeId,
             color: edgeNeed == null ? AppColors.outlineVariant : _needColor(edgeNeed.needType),
-            opacity: profile.isStale ? 0.22 : 0.72,
+            opacity: profile.isStale ? 0.30 : 0.85,
+            strength: 0.15, // Stronger spring force
           ),
         );
+      }
+      
+      // Add edges between nearby communities (similarity-based)
+      if (profile.similarity.isNotEmpty) {
+        for (var sim in profile.similarity.take(2)) {
+          final similarCommunityId = sim['community_id']?.toString() ?? '';
+          if (communityNodes.containsKey(similarCommunityId)) {
+            edges.add(
+              _GraphEdge(
+                from: profile.id,
+                to: similarCommunityId,
+                color: AppColors.primary.withValues(alpha: 0.4),
+                opacity: 0.20,
+                strength: 0.08,
+              ),
+            );
+          }
+        }
       }
     }
 
@@ -801,40 +949,51 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
 
     final rng = math.Random(13);
     for (final node in nodes) {
-      node.velocity = Offset((rng.nextDouble() - 0.5) * 0.01, (rng.nextDouble() - 0.5) * 0.01);
+      node.velocity = Offset((rng.nextDouble() - 0.5) * 0.008, (rng.nextDouble() - 0.5) * 0.008);
     }
 
-    for (var iteration = 0; iteration < iterations * 12; iteration++) {
+    for (var iteration = 0; iteration < iterations * 15; iteration++) {
+      // Repulsive forces between all nodes
       for (var i = 0; i < nodes.length; i++) {
         for (var j = i + 1; j < nodes.length; j++) {
           final a = nodes[i];
           final b = nodes[j];
           final delta = b.position - a.position;
-          final distance = math.max(0.02, delta.distance);
-          final repulsion = 0.0016 / (distance * distance);
+          final distance = math.max(0.01, delta.distance);
+          final repulsion = 0.0020 / (distance * distance);
           final force = delta / distance * repulsion;
           a.velocity -= force;
           b.velocity += force;
         }
       }
 
+      // Attractive forces along edges (springs)
       for (final edge in edges) {
         final source = nodes.firstWhere((node) => node.id == edge.from, orElse: () => nodes.first);
         final target = nodes.firstWhere((node) => node.id == edge.to, orElse: () => nodes.first);
         final delta = target.position - source.position;
-        final distance = math.max(0.02, delta.distance);
-        final spring = (distance - 0.12) * 0.007;
+        final distance = math.max(0.01, delta.distance);
+        final spring = (distance - 0.10) * (edge.strength ?? 0.10);
         final force = delta / distance * spring;
         source.velocity += force;
         target.velocity -= force;
       }
 
+      // Apply anchor constraints and damping
       for (final node in nodes) {
-        final anchor = node.kind == _GraphNodeKind.community ? node.position : node.anchor ?? node.position;
-        final pull = (anchor - node.position) * 0.04;
-        node.velocity += pull;
-        node.position = (node.position + node.velocity).clamp(const Offset(0.05, 0.05), const Offset(0.95, 0.95));
-        node.velocity *= 0.80;
+        final anchor = node.anchor ?? node.position;
+        if (node.kind == _GraphNodeKind.community) {
+          // Communities stay anchored to geographic positions
+          final pull = (anchor - node.position) * 0.06;
+          node.velocity += pull;
+        } else {
+          // NGOs pull towards their parent community but with some freedom
+          final pull = (anchor - node.position) * 0.04;
+          node.velocity += pull;
+        }
+        
+        node.position = (node.position + node.velocity).clamp(const Offset(0.03, 0.03), const Offset(0.97, 0.97));
+        node.velocity *= 0.82; // Damping to stabilize layout
       }
     }
   }
@@ -909,8 +1068,15 @@ class _GraphEdge {
   final String to;
   final Color color;
   final double opacity;
+  final double? strength;
 
-  _GraphEdge({required this.from, required this.to, required this.color, required this.opacity});
+  _GraphEdge({
+    required this.from,
+    required this.to,
+    required this.color,
+    required this.opacity,
+    this.strength = 0.10,
+  });
 }
 
 class _GraphEdgePainter extends CustomPainter {
