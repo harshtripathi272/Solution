@@ -2,8 +2,6 @@ import os
 import json
 import logging
 from pathlib import Path
-import firebase_admin
-from firebase_admin import credentials, auth as firebase_auth, firestore
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
@@ -17,51 +15,108 @@ logger = logging.getLogger(__name__)
 
 def _resolve_credentials_path(raw_path: str) -> Path | None:
     """Resolve service account path across common runtime working directories."""
+    if not raw_path:
+        return None
     candidate = Path(raw_path)
     if candidate.is_absolute() and candidate.exists():
         return candidate
 
     backend_dir = Path(__file__).resolve().parent
+    project_root = backend_dir.parent  # one level above backend/
     candidates = [
         Path.cwd() / raw_path,
         backend_dir / raw_path,
         backend_dir / candidate.name,
+        project_root / raw_path,        # handles ./backend/... relative to project root
+        project_root / candidate.name,
     ]
     for path in candidates:
         if path.exists():
             return path
     return None
 
-# Initialize Firebase Admin
-cred_path_raw = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase_service_account.json")
-cred_path = _resolve_credentials_path(cred_path_raw)
-if cred_path is not None:
-    cred = credentials.Certificate(str(cred_path))
-    if not firebase_admin._apps: 
-        firebase_admin.initialize_app(cred)
+
+# ---------------------------------------------------------------------------
+# Lazy Firebase initialiser
+# ---------------------------------------------------------------------------
+# We defer ALL heavy firebase_admin submodule imports (credentials, auth,
+# firestore) to first use so that importing this module does not trigger
+# the gRPC / google-auth cold-start (~4-5 s) that was hanging uvicorn.
+# ---------------------------------------------------------------------------
+
+_firebase_app_initialized = False
+
+def _ensure_firebase_app() -> None:
+    """Initialize the Firebase Admin app exactly once, lazily."""
+    global _firebase_app_initialized
+    if _firebase_app_initialized:
+        return
+    _firebase_app_initialized = True
+
+    import firebase_admin
+    from firebase_admin import credentials as _creds
+
+    if firebase_admin._apps:
+        return  # already initialized by another module
+
+    cred_path_raw = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase_service_account.json").strip(' "\'\r\n')
+    cred_path = _resolve_credentials_path(cred_path_raw)
+
+    if cred_path is not None:
+        firebase_admin.initialize_app(_creds.Certificate(str(cred_path)))
         try:
             with cred_path.open("r", encoding="utf-8") as fh:
                 project_id = (json.load(fh) or {}).get("project_id", "unknown")
             logger.info("Firebase initialized with service account: %s (project=%s)", cred_path, project_id)
         except Exception:
             logger.info("Firebase initialized with service account: %s", cred_path)
-else:
-    # Use default credentials to allow startup without breaking if json is missing
-    if not firebase_admin._apps:
+    else:
         firebase_admin.initialize_app()
         logger.warning(
             "FIREBASE_CREDENTIALS_PATH not found (%s). Falling back to Application Default Credentials.",
             cred_path_raw,
         )
 
-db = firestore.client()
+
+# Lazy Firestore db proxy — defers firestore.client() to first API request.
+_db = None
+
+def _get_db():
+    global _db
+    if _db is None:
+        _ensure_firebase_app()
+        from firebase_admin import firestore as _fs
+        _db = _fs.client()
+    return _db
+
+
+class _LazyDb:
+    """Proxy that defers firestore.client() until first attribute access."""
+    def __getattr__(self, name):
+        return getattr(_get_db(), name)
+
+
+# `firestore` sentinel for SERVER_TIMESTAMP and other module-level constants
+# used in main.py as `firestore.SERVER_TIMESTAMP`.
+class _LazyFirestore:
+    def __getattr__(self, name):
+        _ensure_firebase_app()
+        from firebase_admin import firestore as _fs
+        return getattr(_fs, name)
+
+
+db = _LazyDb()
+firestore = _LazyFirestore()
 security = HTTPBearer()
+
 
 def get_current_user_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verifies Firebase ID token and returns decoded token dict."""
     token = credentials.credentials
     try:
-        decoded_token = firebase_auth.verify_id_token(token)
+        _ensure_firebase_app()
+        from firebase_admin import auth as _firebase_auth
+        decoded_token = _firebase_auth.verify_id_token(token)
         return decoded_token
     except Exception as e:
         raise HTTPException(

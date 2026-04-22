@@ -4,6 +4,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from typing import Any, Dict, List
 from datetime import datetime, timezone, timedelta
+from math import atan2, cos, radians, sin, sqrt
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -86,6 +87,14 @@ class SeverityFeedbackRequest(BaseModel):
     need_type: str
     feedback: str
     note: str | None = None
+
+
+def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    radius = 6371.0
+    d_lat = radians(lat2 - lat1)
+    d_lon = radians(lon2 - lon1)
+    a = sin(d_lat / 2.0) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lon / 2.0) ** 2
+    return 2.0 * radius * atan2(sqrt(a), sqrt(1.0 - a))
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
@@ -495,8 +504,60 @@ async def submit_report(
     }
 
 @app.get("/api/v1/tasks")
-def get_tasks(current_user: UserProfile = Depends(RoleChecker([UserRole.volunteer, UserRole.ngo_worker, UserRole.coordinator]))):
-    """Volunteers can view tasks, as can everyone else above them"""
+async def get_tasks(
+    current_user: UserProfile = Depends(RoleChecker([UserRole.volunteer, UserRole.ngo_worker, UserRole.coordinator])),
+    radius_km: float = 30.0,
+    limit: int = 20,
+    latitude: float | None = None,
+    longitude: float | None = None,
+):
+    """Returns nearby volunteer tasks derived from historical context snapshots."""
+    user_location = location_store.get_user_location(current_user.uid)
+
+    if latitude is not None and longitude is not None:
+        anchor_lat, anchor_lon = latitude, longitude
+        location_source = "query"
+    elif user_location is not None:
+        anchor_lat, anchor_lon = user_location.lat, user_location.lon
+        location_source = "shared_location"
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="No active shared location found. Share location or pass latitude/longitude query params.",
+        )
+
+    raw_tasks = await firestore_store.list_volunteer_area_tasks(limit=max(50, limit * 5), active_only=True)
+
+    filtered: list[dict[str, Any]] = []
+    for task in raw_tasks:
+        try:
+            lat = float(task.get("lat"))
+            lon = float(task.get("lon"))
+        except (TypeError, ValueError):
+            continue
+
+        distance = _distance_km(anchor_lat, anchor_lon, lat, lon)
+        if distance > radius_km:
+            continue
+
+        task_payload = {
+            **task,
+            "distance_km": round(distance, 2),
+        }
+        filtered.append(task_payload)
+
+    filtered.sort(
+        key=lambda item: (
+            -float(item.get("composite_urgency", 0.0) or 0.0),
+            float(item.get("distance_km", 9999.0) or 9999.0),
+        )
+    )
+
     return {
-        "message": f"Tasks accessed for user ({current_user.uid})."
+        "status": "ok",
+        "location_source": location_source,
+        "anchor": {"lat": anchor_lat, "lon": anchor_lon},
+        "radius_km": radius_km,
+        "count": min(limit, len(filtered)),
+        "tasks": filtered[:limit],
     }

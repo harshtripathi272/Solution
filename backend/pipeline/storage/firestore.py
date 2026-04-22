@@ -54,8 +54,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING
+from dotenv import load_dotenv
+
+load_dotenv()
 
 if TYPE_CHECKING:
     from pipeline.core.schemas import UnifiedIngestionEvent, DocumentMetadata
@@ -79,34 +84,86 @@ class FirestoreStore:
     _DOCUMENT_REGISTRY_COLLECTION = "document_registry"
     _CHRONIC_COLLECTION = "chronic_scores"
     _COMMUNITY_PROFILES_COLLECTION = "community_profiles"
+    _COMMUNITY_HISTORY_COLLECTION = "community_historical_context"
+    _VOLUNTEER_TASKS_COLLECTION = "volunteer_area_tasks"
     _PIPELINE_ALERTS_COLLECTION = "pipeline_alerts"
     _SEVERITY_FEEDBACK_COLLECTION = "severity_feedback"
 
     def __init__(self) -> None:
         self._db = None
         self._firestore = None
-        self._init()
+        self._init_attempted = False
+        self._init_error: str | None = None
+        # NOTE: _init() is intentionally NOT called here.
+        # The gRPC connection is established lazily on first database access
+        # to avoid a ~5 second blocking call during module import / uvicorn startup.
 
-    def _init(self) -> None:
+    @staticmethod
+    def _resolve_credentials_path(raw_path: str | None) -> Path | None:
+        if not raw_path:
+            return None
+
+        candidate = Path(raw_path)
+        if candidate.is_absolute() and candidate.exists():
+            return candidate
+
+        backend_dir = Path(__file__).resolve().parents[2]
+        candidates = [
+            Path.cwd() / raw_path,
+            backend_dir / raw_path,
+            backend_dir / candidate.name,
+        ]
+        for path in candidates:
+            if path.exists():
+                return path
+        return None
+
+    def _init(self, force: bool = False) -> None:
+        if self._db is not None and not force:
+            return
+        if self._init_attempted and not force and self._db is None:
+            return
+
+        self._init_attempted = True
         try:
             from firebase_admin import firestore as _fs
+            from firebase_admin import credentials as _credentials
             import firebase_admin
 
-            # Use the default app — already initialised in auth.py at boot time
-            if firebase_admin._DEFAULT_APP_NAME in firebase_admin._apps:
-                self._db = _fs.client()
-                self._firestore = _fs
-                logger.info("[FirestoreStore] Connected to Firestore ✓")
-            else:
-                logger.warning("[FirestoreStore] Firebase app not initialised yet — will retry lazily.")
+            if firebase_admin._DEFAULT_APP_NAME not in firebase_admin._apps:
+                # Prefer explicit service-account credentials when available.
+                cred_path = self._resolve_credentials_path(
+                    os.getenv("FIREBASE_CREDENTIALS_PATH")
+                    or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+                )
+                if cred_path is not None:
+                    firebase_admin.initialize_app(_credentials.Certificate(str(cred_path)))
+                    logger.info("[FirestoreStore] Initialized Firebase app using credentials at %s", cred_path)
+                else:
+                    # Last-resort ADC init. If ADC is not configured, this will raise.
+                    firebase_admin.initialize_app()
+                    logger.info("[FirestoreStore] Initialized Firebase app using Application Default Credentials")
+
+            self._db = _fs.client()
+            self._firestore = _fs
+            self._init_error = None
+            logger.info("[FirestoreStore] Connected to Firestore ✓")
         except Exception as exc:
+            self._db = None
+            self._firestore = None
+            self._init_error = str(exc)
             logger.error("[FirestoreStore] Init failed: %s", exc)
 
     def _get_db(self):
-        """Lazy init — handles case where firebase_admin isn't ready at import time."""
+        """Resolve Firestore client once; fail fast when unavailable."""
         if self._db:
             return self._db
-        self._init()
+
+        if not self._init_attempted:
+            self._init()
+
+        if self._db is None and self._init_error:
+            logger.debug("[FirestoreStore] Firestore unavailable: %s", self._init_error)
         return self._db
 
     # Public API (async wrappers around sync Firestore calls)
@@ -478,6 +535,139 @@ class FirestoreStore:
             return [doc.to_dict() for doc in docs if doc.exists]
         except Exception as exc:
             logger.error("[FirestoreStore] list_community_projections failed: %s", exc)
+            return []
+
+    async def upsert_historical_context(
+        self,
+        event: "UnifiedIngestionEvent",
+        severity_payload: dict,
+        community_context: dict,
+        nearby_volunteer_count: int,
+        recommended_tasks: list[dict],
+    ) -> None:
+        """Stores historical-context snapshot for a resolved community/geohash."""
+        db = self._get_db()
+        if not db:
+            return
+
+        community_id = str(community_context.get("community_id") or "").strip()
+        doc_id = community_id or (event.geohash or event.id)
+        if not doc_id:
+            return
+
+        now = datetime.now(timezone.utc)
+        baseline = {
+            "historical_crisis_frequency": float(community_context.get("historical_crisis_frequency", 0.0) or 0.0),
+            "infrastructure_gaps": community_context.get("infrastructure_gaps", []),
+            "vulnerable_groups": community_context.get("vulnerable_groups", []),
+        }
+
+        payload = {
+            "community_id": community_id,
+            "community_name": community_context.get("community_name"),
+            "geohash": event.geohash,
+            "region": str((event.metadata or {}).get("region") or ""),
+            "location": {
+                "lat": event.location.latitude,
+                "lon": event.location.longitude,
+                "admin_level": event.admin_level,
+            },
+            "latest_event": {
+                "event_id": event.id,
+                "source": event.source,
+                "need_type": event.need_type,
+                "severity": event.severity,
+                "timestamp": event.timestamp,
+                "description": event.description[:500],
+            },
+            "severity": {
+                "acute": float(severity_payload.get("severity_acute", 0.0) or 0.0),
+                "chronic": float(severity_payload.get("severity_chronic", 0.0) or 0.0),
+                "composite": float(severity_payload.get("composite_urgency", 0.0) or 0.0),
+                "classification": severity_payload.get("classification"),
+                "recommended_response_time": severity_payload.get("recommended_response_time"),
+                "reliability_score": float(severity_payload.get("reliability_score", 0.0) or 0.0),
+            },
+            "baseline": baseline,
+            "nearby_volunteer_count": int(nearby_volunteer_count),
+            "recommended_tasks": recommended_tasks,
+            "last_updated": now,
+        }
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.collection(self._COMMUNITY_HISTORY_COLLECTION).document(doc_id).set(payload, merge=True),
+            )
+        except Exception as exc:
+            logger.error("[FirestoreStore] upsert_historical_context failed for %s: %s", doc_id, exc)
+
+    async def upsert_volunteer_area_tasks(
+        self,
+        event: "UnifiedIngestionEvent",
+        community_context: dict,
+        severity_payload: dict,
+        recommended_tasks: list[dict],
+    ) -> None:
+        """Stores geospatial volunteer-facing tasks derived from historical context."""
+        db = self._get_db()
+        if not db:
+            return
+
+        if not recommended_tasks:
+            return
+
+        community_id = str(community_context.get("community_id") or "").strip()
+        now = datetime.now(timezone.utc)
+        doc_id = f"{community_id or event.geohash}:{event.id}"
+
+        payload = {
+            "task_id": doc_id,
+            "community_id": community_id,
+            "community_name": community_context.get("community_name"),
+            "geohash": event.geohash,
+            "lat": event.location.latitude,
+            "lon": event.location.longitude,
+            "need_type": event.need_type,
+            "source": event.source,
+            "severity_classification": severity_payload.get("classification"),
+            "composite_urgency": float(severity_payload.get("composite_urgency", 0.0) or 0.0),
+            "recommended_response_time": severity_payload.get("recommended_response_time"),
+            "tasks": recommended_tasks,
+            "active": True,
+            "created_at": now,
+            "updated_at": now,
+            "expires_at": now.replace(microsecond=0),
+        }
+
+        # 14-day retention window for volunteer-area tasks.
+        payload["expires_at"] = payload["expires_at"] + timedelta(days=14)
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.collection(self._VOLUNTEER_TASKS_COLLECTION).document(doc_id).set(payload, merge=True),
+            )
+        except Exception as exc:
+            logger.error("[FirestoreStore] upsert_volunteer_area_tasks failed for %s: %s", doc_id, exc)
+
+    async def list_volunteer_area_tasks(self, limit: int = 100, active_only: bool = True) -> list[dict]:
+        db = self._get_db()
+        if not db:
+            return []
+
+        def _stream() -> list[Any]:
+            query = db.collection(self._VOLUNTEER_TASKS_COLLECTION)
+            if active_only:
+                query = query.where("active", "==", True)
+            query = query.order_by("updated_at", direction=self._firestore.Query.DESCENDING).limit(limit)
+            return list(query.stream())
+
+        try:
+            docs = await asyncio.get_event_loop().run_in_executor(None, _stream)
+            return [doc.to_dict() for doc in docs if doc.exists]
+        except Exception as exc:
+            logger.error("[FirestoreStore] list_volunteer_area_tasks failed: %s", exc)
             return []
 
 

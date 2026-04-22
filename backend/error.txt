@@ -1,0 +1,24 @@
+Traceback (most recent call last):
+  File "<string>", line 4, in <module>
+  File "C:\CodingNest\Solution\backend\main.py", line 23, in <module>
+    from pipeline.ingestors.manager import ingestion_manager
+  File "C:\CodingNest\Solution\backend\pipeline\ingestors\manager.py", line 16, in <module>
+    from .global_rss_monitor import GlobalRSSMonitor
+  File "C:\CodingNest\Solution\backend\pipeline\ingestors\global_rss_monitor.py", line 21, in <module>
+    from newspaper import Article
+  File "C:\Users\aayuk\anaconda3\Lib\site-packages\newspaper\__init__.py", line 10, in <module>
+    from .api import (build, build_article, fulltext, hot, languages,
+  File "C:\Users\aayuk\anaconda3\Lib\site-packages\newspaper\api.py", line 14, in <module>
+    from .article import Article
+  File "C:\Users\aayuk\anaconda3\Lib\site-packages\newspaper\article.py", line 15, in <module>
+    from . import network
+  File "C:\Users\aayuk\anaconda3\Lib\site-packages\newspaper\network.py", line 14, in <module>
+    from .configuration import Configuration
+  File "C:\Users\aayuk\anaconda3\Lib\site-packages\newspaper\configuration.py", line 15, in <module>
+    from .parsers import Parser
+  File "C:\Users\aayuk\anaconda3\Lib\site-packages\newspaper\parsers.py", line 12, in <module>
+    import lxml.html.clean
+  File "C:\Users\aayuk\anaconda3\Lib\site-packages\lxml\html\clean.py", line 18, in <module>
+    raise ImportError(
+ImportError: lxml.html.clean module is now a separate project lxml_html_clean.
+Install lxml[html_clean] or lxml_html_clean directly.

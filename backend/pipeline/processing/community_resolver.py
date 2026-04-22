@@ -44,7 +44,7 @@ class CommunityResolver:
         self._nlp = None
         self._spacy_ready = False
         self._load_communities(data_file)
-        self._load_spacy()
+        # spacy is loaded lazily on first _extract_entities call
 
     def _load_communities(self, data_file: Path) -> None:
         try:
@@ -58,25 +58,30 @@ class CommunityResolver:
         except Exception as exc:
             logger.error("[CommunityResolver] Failed to load communities.json: %s", exc)
 
-    def _load_spacy(self) -> None:
+    def _ensure_spacy(self) -> None:
+        if self._spacy_ready or self._nlp is not None:
+            return  # Already loaded
+            
         if spacy is None:
             logger.info("[CommunityResolver] spaCy not installed; using fuzzy matching only.")
+            self._spacy_ready = True  # Mark ready so we don't spam logs
             return
 
         requested_model = os.getenv("COMMUNITY_SPACY_MODEL", _DEFAULT_SPACY_MODEL).strip() or _DEFAULT_SPACY_MODEL
         try:
             self._nlp = spacy.load(requested_model)
             self._spacy_ready = True
-            logger.info("[CommunityResolver] spaCy model ready: %s", requested_model)
+            logger.info("[CommunityResolver] loaded spaCy model: %s", requested_model)
         except Exception:
             try:
                 self._nlp = spacy.blank("en")
                 self._spacy_ready = True
                 logger.info("[CommunityResolver] Using blank spaCy pipeline for token support.")
-            except Exception as exc:  # pragma: no cover - optional dependency failure
+            except Exception as exc:
                 self._nlp = None
-                self._spacy_ready = False
+                self._spacy_ready = True # Prevent infinite retries
                 logger.warning("[CommunityResolver] spaCy unavailable: %s", exc)
+
 
     @staticmethod
     def _normalize_community(item: dict[str, Any]) -> dict[str, Any]:
@@ -116,6 +121,7 @@ class CommunityResolver:
         return re.sub(r"\s+", " ", value.lower().strip())
 
     def _extract_entities(self, text: str) -> list[str]:
+        self._ensure_spacy()
         if not self._spacy_ready or self._nlp is None:
             return []
 

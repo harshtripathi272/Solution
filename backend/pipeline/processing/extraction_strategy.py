@@ -21,10 +21,8 @@ from typing import Optional
 from pipeline.core.schemas import UnifiedIngestionEvent
 from pipeline.processing.ner import ner_extractor
 
-try:
-    from gliner import GLiNER
-except ImportError:
-    GLiNER = None
+# Optional dependencies loaded inside methods to avoid heavy module initialization
+GLiNER = None
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +67,15 @@ class GLiNERExtractor:
         self.labels = ["disaster", "location", "infrastructure damage", "human impact"]
         
     def _load_model(self):
-        if not self.model and GLiNER is not None:
-            repo_id = "urchade/gliner_base"
+        if not self.model:
+            try:
+                from gliner import GLiNER
+                global_GLiNER = GLiNER
+            except ImportError:
+                global_GLiNER = None
+                
+            if global_GLiNER is not None:
+                repo_id = "urchade/gliner_base"
             
             # Silence annoying HuggingFace warnings and download logs
             import os
@@ -102,15 +107,14 @@ class GLiNERExtractor:
     def extract(self, text: str) -> dict:
         """Fast offline extraction of labels from text via Matrix Multiplication."""
         empty_result = {"need_type": None, "severity": None, "places": [], "confidence": 0.0}
-        
-        if not GLiNER:
-            logger.warning("[GLiNERExtractor] gliner not installed. Run 'pip install gliner'.")
-            return empty_result
             
         if not text:
             return empty_result
             
         self._load_model()
+        if not self.model:
+            logger.warning("[GLiNERExtractor] gliner not installed. Run 'pip install gliner'.")
+            return empty_result
         
         # Limit text length to prevent quadratic processing explosion
         truncated_text = text[:800]
