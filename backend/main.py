@@ -597,7 +597,7 @@ async def get_tasks(
                     "sdgTags": [int(tag) for tag in sdg_tags],
                     "createdFromReportId": task_group.get("latest_event", {}).get("event_id"),
                     "ngoId": community_id or str(task_group.get("source") or "community"),
-                    "createdAt": _as_iso(task_group.get("updated_at")) or datetime.now(timezone.utc).isoformat(),
+                    "createdAt": _to_iso_string(task_group.get("updated_at")) or datetime.now(timezone.utc).isoformat(),
                     "completedAt": None,
                     "matchScore": priority,
                     "distance_km": distance_km,

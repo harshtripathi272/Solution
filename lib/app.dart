@@ -8,6 +8,7 @@ import 'services/auth_service.dart';
 import 'screens/auth_wrapper.dart';
 import 'screens/coordinator/coordinator_dashboard_screen.dart';
 import 'screens/coordinator/community_graph_screen.dart';
+import 'screens/coordinator/heatmap_screen.dart';
 import 'screens/coordinator/sdg_dashboard_screen.dart';
 import 'screens/coordinator/coordinator_profile_screen.dart';
 import 'screens/volunteer/task_feed_screen.dart';
@@ -128,9 +129,10 @@ class AppShell extends StatelessWidget {
   Widget _buildCoordinatorBody(AppState state) {
     switch (state.currentNavIndex) {
       case 0: return const CoordinatorDashboard();
-      case 1: return const CommunityGraphScreen();
-      case 2: return const SDGDashboardScreen();
-      case 3: return const CoordinatorProfileScreen();
+      case 1: return const HeatmapScreen();
+      case 2: return const CommunityGraphScreen();
+      case 3: return const SDGDashboardScreen();
+      case 4: return const CoordinatorProfileScreen();
       default: return const CoordinatorDashboard();
     }
   }
@@ -211,6 +213,7 @@ class AppShell extends StatelessWidget {
       case UserRole.coordinator:
         return [
           {'icon': Icons.home_filled, 'label': 'Dashboard'},
+          {'icon': Icons.map, 'label': 'Heatmap'},
           {'icon': Icons.hub, 'label': 'Network'},
           {'icon': Icons.analytics, 'label': 'Impact'},
           {'icon': Icons.person, 'label': 'Profile'},

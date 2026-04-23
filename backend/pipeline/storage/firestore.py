@@ -672,9 +672,13 @@ class FirestoreStore:
 
     async def list_recent_events(self, limit: int = 50, since: "datetime" | None = None) -> list[dict]:
         """
-        Fetch recent ingestion events from need_regions/{geohash}/events.
+        Fetch recent ingestion events from multiple sources:
+        1. need_regions/{geohash}/events (time-series subcollections)
+        2. need_regions top-level docs (most recent region snapshots)
+        3. community_historical_context (community-level needs)
         
         Returns events sorted by timestamp (descending), optionally filtered by 'since'.
+        Combines all sources and deduplicates by geohash.
         """
         db = self._get_db()
         if not db:
@@ -684,27 +688,102 @@ class FirestoreStore:
             from datetime import datetime, timezone
             
             events: list[dict] = []
-            # Fetch all geohash regions
-            regions = list(db.collection(self._COLLECTION).stream())
+            seen_geohashes = set()
             
-            for region_doc in regions:
-                # Fetch events subcollection for each region
-                events_query = region_doc.reference.collection("events").order_by(
-                    "timestamp", direction=self._firestore.Query.DESCENDING
-                ).limit(limit)
+            # SOURCE 1: Fetch events from need_regions subcollections
+            try:
+                regions = list(db.collection(self._COLLECTION).stream())
                 
+                for region_doc in regions:
+                    region_id = region_doc.id
+                    region_data = region_doc.to_dict() or {}
+                    
+                    # Try to fetch from events subcollection first
+                    try:
+                        events_query = region_doc.reference.collection("events").order_by(
+                            "timestamp", direction=self._firestore.Query.DESCENDING
+                        ).limit(limit)
+                        
+                        if since:
+                            events_query = events_query.where("timestamp", ">=", since)
+                        
+                        has_events = False
+                        for event_doc in events_query.stream():
+                            if event_doc.exists:
+                                has_events = True
+                                event_data = event_doc.to_dict()
+                                event_data["geohash"] = region_id
+                                event_data["source_collection"] = "events_subcollection"
+                                events.append(event_data)
+                                seen_geohashes.add(region_id)
+                        
+                        # If no events in subcollection but region is recent, use region data
+                        if not has_events and since:
+                            last_updated = region_data.get("last_updated")
+                            if last_updated and isinstance(last_updated, datetime) and last_updated >= since:
+                                region_event = {
+                                    "geohash": region_id,
+                                    "event_id": region_data.get("latest_event_id", f"region_{region_id}"),
+                                    "source": region_data.get("latest_event_source", "firestore"),
+                                    "need_type": region_data.get("dominant_need", "general_need"),
+                                    "severity": region_data.get("max_severity", "moderate"),
+                                    "composite_urgency": region_data.get("composite_urgency", 0.0),
+                                    "timestamp": last_updated,
+                                    "description": region_data.get("latest_text_preview", ""),
+                                    "population_affected": region_data.get("event_count", 0),
+                                    "centroid_lat": region_data.get("centroid_lat"),
+                                    "centroid_lon": region_data.get("centroid_lon"),
+                                    "source_collection": "need_regions_toplevel",
+                                }
+                                events.append(region_event)
+                                seen_geohashes.add(region_id)
+                    except Exception as e:
+                        logger.warning("[FirestoreStore] Error fetching events for region %s: %s", region_id, e)
+            except Exception as e:
+                logger.warning("[FirestoreStore] Error fetching need_regions: %s", e)
+            
+            # SOURCE 2: Fetch from community_historical_context collection
+            try:
+                query = db.collection(self._COMMUNITY_HISTORY_COLLECTION)
                 if since:
-                    # Filter by timestamp if provided
-                    events_query = events_query.where("timestamp", ">=", since)
+                    query = query.where("updated_at", ">=", since)
                 
-                for event_doc in events_query.stream():
-                    if event_doc.exists:
-                        event_data = event_doc.to_dict()
-                        event_data["geohash"] = region_doc.id  # Add geohash from parent
-                        events.append(event_data)
+                community_docs = list(query.order_by(
+                    "updated_at", direction=self._firestore.Query.DESCENDING
+                ).limit(limit).stream())
+                
+                for community_doc in community_docs:
+                    if community_doc.exists:
+                        community_data = community_doc.to_dict() or {}
+                        community_id = community_doc.id
+                        
+                        # Skip if we already have this geohash
+                        if community_id not in seen_geohashes:
+                            community_event = {
+                                "geohash": community_id,
+                                "event_id": f"community_{community_id}",
+                                "source": "community_context",
+                                "community_id": community_data.get("id"),
+                                "community_name": community_data.get("name"),
+                                "need_type": community_data.get("primary_need", "general_need"),
+                                "severity": community_data.get("severity_level", "moderate"),
+                                "composite_urgency": community_data.get("urgency_score", 0.0),
+                                "timestamp": community_data.get("updated_at"),
+                                "description": community_data.get("description", ""),
+                                "latitude": community_data.get("latitude"),
+                                "longitude": community_data.get("longitude"),
+                                "source_collection": "community_historical_context",
+                            }
+                            events.append(community_event)
+                            seen_geohashes.add(community_id)
+            except Exception as e:
+                logger.warning("[FirestoreStore] Error fetching community_historical_context: %s", e)
             
             # Sort globally by timestamp descending and return top N
-            events.sort(key=lambda x: x.get("timestamp", datetime.min), reverse=True)
+            events.sort(
+                key=lambda x: x.get("timestamp") if isinstance(x.get("timestamp"), datetime) else datetime.min,
+                reverse=True
+            )
             return events[:limit]
 
         try:

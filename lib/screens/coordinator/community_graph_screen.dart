@@ -597,8 +597,17 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
               onTap: () => setState(() => _selectedCommunityId = profile.id),
               child: AnimatedContainer(
                 duration: 250.ms,
-                decoration: AppDecorations.baseCard.copyWith(
-                  border: Border.all(color: selected ? AppColors.primary : Colors.transparent, width: 1.2),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: selected ? AppColors.primary : AppColors.outlineVariant.withValues(alpha: 0.3), width: selected ? 1.5 : 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(18),
@@ -626,7 +635,17 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: profile.needs.take(3).map((need) => Chip(label: Text(_humanizeNeed(need.needType)))).toList(),
+                        children: profile.needs.take(3).map((need) {
+                           final needName = _humanizeNeed(need.needType);
+                           return Container(
+                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                             decoration: BoxDecoration(
+                               color: AppColors.primary.withValues(alpha: 0.08),
+                               borderRadius: BorderRadius.circular(12),
+                             ),
+                             child: Text(needName, style: theme.textTheme.labelMedium?.copyWith(color: AppColors.primary)),
+                           );
+                        }).toList(),
                       ),
                     ],
                   ),

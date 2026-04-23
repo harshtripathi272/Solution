@@ -7,6 +7,7 @@ import '../../widgets/stat_card.dart';
 import '../../widgets/task_card.dart';
 import '../../widgets/crisis_alert_card.dart';
 import '../../services/community_graph_api_service.dart';
+import '../../models/community_graph_models.dart';
 
 class CoordinatorDashboard extends StatefulWidget {
   const CoordinatorDashboard({super.key});
@@ -18,6 +19,7 @@ class CoordinatorDashboard extends StatefulWidget {
 class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
   late CommunityGraphApiService _apiService;
   Map<String, dynamic>? _recentNeeds;
+  CommunityGraphOverview? _overviewData;
   bool _loading = false;
   String? _error;
 
@@ -36,10 +38,15 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
     });
 
     try {
-      final data = await _apiService.fetchRecentNeeds(limit: 10, hours: 48);
+      final results = await Future.wait([
+        _apiService.fetchRecentNeeds(limit: 10, hours: 48),
+        _apiService.fetchOverview(limit: 6),
+      ]);
+      
       if (!mounted) return;
       setState(() {
-        _recentNeeds = data;
+        _recentNeeds = results[0] as Map<String, dynamic>;
+        _overviewData = results[1] as CommunityGraphOverview;
         _loading = false;
       });
     } catch (e) {
@@ -85,19 +92,24 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    StatCard(
-                      title: 'Open Needs',
-                      value: '${state.tasks.where((t) => t.status == TaskStatus.open).length}',
-                      icon: Icons.assignment_late,
-                      color: AppColors.warning,
-                      subtitle: '+2 since yesterday',
+                    Expanded(
+                      child: StatCard(
+                        title: 'Open Needs',
+                        value: '${state.tasks.where((t) => t.status == TaskStatus.open).length}',
+                        icon: Icons.assignment_late,
+                        color: AppColors.warning,
+                        subtitle: 'Requires attention',
+                      ),
                     ),
-                    StatCard(
-                      title: 'Active Volunteers',
-                      value: '${state.volunteers.where((v) => v.isAvailable).length}',
-                      icon: Icons.people,
-                      color: AppColors.primary,
-                      subtitle: '98% capacity',
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: StatCard(
+                        title: 'Available Volunteers',
+                        value: '${state.volunteers.where((v) => v.isAvailable).length}',
+                        icon: Icons.people,
+                        color: AppColors.primary,
+                        subtitle: '${state.volunteers.length} total registered',
+                      ),
                     ),
                   ],
                 ),
@@ -164,31 +176,105 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
                 const SizedBox(height: 32),
               ],
               
-              // Recent Tasks
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Text('Recent Needs', style: theme.textTheme.headlineLarge),
-              ),
-              const SizedBox(height: 32),
-              
-              ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: state.tasks.take(5).length,
-                itemBuilder: (context, index) {
+              // Recent Needs (Community Profiles)
+              if (_overviewData != null && _overviewData!.profiles.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text('Recent Needs', style: theme.textTheme.headlineLarge),
+                ),
+                const SizedBox(height: 24),
+                
+                ..._overviewData!.profiles.take(5).map((profile) {
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 24),
-                    child: TaskCard(task: state.tasks[index]),
+                    padding: const EdgeInsets.only(bottom: 16, left: 32, right: 32),
+                    child: _buildCommunityRequirementCard(context, theme, profile),
                   );
-                },
-              ),
-              
-              const SizedBox(height: 48),
+                }),
+                const SizedBox(height: 48),
+              ] else ...[
+                // Fallback to task components if no profiles
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text('Recent Needs', style: theme.textTheme.headlineLarge),
+                ),
+                const SizedBox(height: 24),
+                ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: state.tasks.take(5).length,
+                  itemBuilder: (context, index) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: TaskCard(task: state.tasks[index]),
+                    );
+                  },
+                ),
+                const SizedBox(height: 48),
+              ],
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildCommunityRequirementCard(BuildContext context, ThemeData theme, CommunityProfile profile) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.outlineVariant.withValues(alpha: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ]
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(profile.name, style: theme.textTheme.titleLarge),
+                      const SizedBox(height: 4),
+                      Text('Last Reported: ${profile.lastVerifiedLabel}', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: AppColors.outlineVariant),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('Sources: ${profile.activeOrganizationsLabel}', style: theme.textTheme.bodyMedium),
+            const SizedBox(height: 12),
+            if (profile.needs.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: profile.needs.take(3).map((need) {
+                   final needName = need.needType.replaceAll('_', ' ');
+                   return Container(
+                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                     decoration: BoxDecoration(
+                       color: AppColors.primary.withValues(alpha: 0.1),
+                       borderRadius: BorderRadius.circular(12),
+                     ),
+                     child: Text(needName, style: theme.textTheme.labelMedium?.copyWith(color: AppColors.primary)),
+                   );
+                }).toList(),
+              ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,6 +11,7 @@ from models import UserProfile, UserRole
 from pipeline.processing.community_resolver import community_resolver
 from pipeline.storage import firestore_store
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/community-graph", tags=["community-graph"])
 
 
@@ -130,56 +132,56 @@ async def recent_needs(
     Fetch recent ingestion events (needs) from Firestore.
     
     Returns the most recent events within the specified hours,
-    grouped by community with context.
+    grouped by community with context. Combines data from:
+    - need_regions/{geohash}/events (time-series)
+    - need_regions top-level docs (snapshots)
+    - community_historical_context (community profiles)
     """
     try:
         from datetime import timedelta
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
         
-        # Fetch recent events from Firestore
+        # Fetch recent events from Firestore (multiple sources combined)
         events = await firestore_store.list_recent_events(
             limit=limit,
             since=cutoff_time
         )
         
-        # Group events by geohash/community
-        event_groups: dict[str, list[dict]] = {}
-        for event in events:
-            geohash = event.get("geohash", "unknown")
-            if geohash not in event_groups:
-                event_groups[geohash] = []
-            event_groups[geohash].append(event)
-        
-        # Build response with community context
+        # Format events for response
         result = []
-        for geohash, group in event_groups.items():
-            latest = group[0]  # Already sorted by timestamp
-            community_id = latest.get("community_id", "")
-            community_name = latest.get("community_name", "")
+        for event in events:
+            # Extract location data with fallbacks
+            latitude = event.get("latitude") or event.get("centroid_lat")
+            longitude = event.get("longitude") or event.get("centroid_lon")
             
-            result.append({
-                "geohash": geohash,
-                "community_id": community_id,
-                "community_name": community_name,
+            formatted_event = {
+                "geohash": event.get("geohash", "unknown"),
+                "event_id": event.get("event_id") or event.get("id"),
+                "community_id": event.get("community_id", ""),
+                "community_name": event.get("community_name", ""),
                 "location": {
-                    "latitude": latest.get("location", {}).get("latitude"),
-                    "longitude": latest.get("location", {}).get("longitude"),
+                    "latitude": latitude,
+                    "longitude": longitude,
                 },
-                "need_type": latest.get("need_type"),
-                "severity": latest.get("severity"),
-                "composite_urgency": latest.get("metadata", {}).get("severity_engine", {}).get("composite_urgency"),
-                "source": latest.get("source"),
-                "timestamp": _as_iso(latest.get("timestamp")),
-                "event_count": len(group),  # How many events in this region
-                "latest_event_id": latest.get("id"),
-            })
+                "need_type": event.get("need_type", "general_need"),
+                "severity": event.get("severity", "moderate"),
+                "composite_urgency": float(event.get("composite_urgency", 0.0)),
+                "source": event.get("source", "unknown"),
+                "timestamp": _as_iso(event.get("timestamp")),
+                "event_count": int(event.get("population_affected", event.get("event_count", 1))),
+                "latest_event_id": event.get("latest_event_id"),
+                "description": event.get("description", "")[:200],  # Truncate for response
+                "source_collection": event.get("source_collection", "unknown"),
+            }
+            result.append(formatted_event)
         
         return {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "cutoff_hours": hours,
-            "events": sorted(result, key=lambda x: x.get("timestamp", ""), reverse=True),
-            "total_events": sum(len(g) for g in event_groups.values()),
+            "events": result,
+            "total_events": len(result),
             "requested_by": current_user.uid,
         }
     except Exception as exc:
+        logger.error("[community-graph] recent_needs failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"Failed to fetch recent needs: {str(exc)}")
