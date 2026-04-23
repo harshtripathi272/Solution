@@ -3,7 +3,8 @@ import 'package:flutter/foundation.dart';
 import '../providers/app_state.dart';
 
 // Conditionally import platform implementations
-import 'location_service_web.dart' if (dart.library.io) 'location_service_mobile.dart'
+import 'location_service_web.dart'
+    if (dart.library.io) 'location_service_mobile.dart'
     as platform_location;
 
 /// Cross-platform adapter -- calls the Web HTML5 Geolocation API on browser
@@ -63,13 +64,20 @@ class LocationService {
     if (appState.apiClient == null || !appState.isAuthenticated) return;
     try {
       final now = DateTime.now().toUtc().toIso8601String();
-      await appState.apiClient!.post('/api/v1/location/update', {
-        'latitude': lat,
-        'longitude': lon,
-        'timestamp': now,
-        'skills': [],      // Phase 3: fill from user profile
-        'consent': true,
-      });
+      final response = await appState.apiClient!.post(
+        '/api/v1/location/update',
+        {
+          'latitude': lat,
+          'longitude': lon,
+          'timestamp': now,
+          'skills': [], // Phase 3: fill from user profile
+          'consent': true,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        await appState.refreshHistoricalTasks(latitude: lat, longitude: lon);
+      }
     } catch (e) {
       if (kDebugMode) print('[LocationService] Failed to send: $e');
     }

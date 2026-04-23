@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,6 +11,7 @@ from models import UserProfile, UserRole
 from pipeline.processing.community_resolver import community_resolver
 from pipeline.storage import firestore_store
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/community-graph", tags=["community-graph"])
 
 
@@ -118,3 +120,68 @@ async def community_graph_profile(
     profile = _normalize_profile(payload)
     profile["requested_by"] = current_user.uid
     return profile
+
+
+@router.get("/needs/recent")
+async def recent_needs(
+    limit: int = Query(default=20, ge=1, le=100),
+    hours: int = Query(default=48, ge=1, le=720),
+    current_user: UserProfile = Depends(RoleChecker([UserRole.coordinator, UserRole.ngo_worker, UserRole.volunteer])),
+):
+    """
+    Fetch recent ingestion events (needs) from Firestore.
+    
+    Returns the most recent events within the specified hours,
+    grouped by community with context. Combines data from:
+    - need_regions/{geohash}/events (time-series)
+    - need_regions top-level docs (snapshots)
+    - community_historical_context (community profiles)
+    """
+    try:
+        from datetime import timedelta
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        
+        # Fetch recent events from Firestore (multiple sources combined)
+        events = await firestore_store.list_recent_events(
+            limit=limit,
+            since=cutoff_time
+        )
+        
+        # Format events for response
+        result = []
+        for event in events:
+            # Extract location data with fallbacks
+            latitude = event.get("latitude") or event.get("centroid_lat")
+            longitude = event.get("longitude") or event.get("centroid_lon")
+            
+            formatted_event = {
+                "geohash": event.get("geohash", "unknown"),
+                "event_id": event.get("event_id") or event.get("id"),
+                "community_id": event.get("community_id", ""),
+                "community_name": event.get("community_name", ""),
+                "location": {
+                    "latitude": latitude,
+                    "longitude": longitude,
+                },
+                "need_type": event.get("need_type", "general_need"),
+                "severity": event.get("severity", "moderate"),
+                "composite_urgency": float(event.get("composite_urgency", 0.0)),
+                "source": event.get("source", "unknown"),
+                "timestamp": _as_iso(event.get("timestamp")),
+                "event_count": int(event.get("population_affected", event.get("event_count", 1))),
+                "latest_event_id": event.get("latest_event_id"),
+                "description": event.get("description", "")[:200],  # Truncate for response
+                "source_collection": event.get("source_collection", "unknown"),
+            }
+            result.append(formatted_event)
+        
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "cutoff_hours": hours,
+            "events": result,
+            "total_events": len(result),
+            "requested_by": current_user.uid,
+        }
+    except Exception as exc:
+        logger.error("[community-graph] recent_needs failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch recent needs: {str(exc)}")

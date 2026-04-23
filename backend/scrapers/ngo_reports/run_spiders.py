@@ -1,31 +1,68 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
+from pathlib import Path
 
 from scrapy.crawler import CrawlerProcess
 
-from scrapers.ngo_reports import settings as ngo_settings
-from scrapers.ngo_reports.spiders import (
-    ActionAidIndiaReportsSpider,
-    OxfamIndiaReportsSpider,
-    PradanReportsSpider,
-    SphereIndiaReportsSpider,
-    SewaBharatReportsSpider,
-    NFIReportsSpider,
-    VHAIReportsSpider,
-)
+MODULE_PREFIX = "scrapers"
+
+try:
+    from scrapers.ngo_reports import settings as ngo_settings
+    from scrapers.ngo_reports.spiders import (
+        ActionAidIndiaReportsSpider,
+        OxfamIndiaReportsSpider,
+        PradanReportsSpider,
+        VHAIReportsSpider,
+        MahanTrustSpider,
+        KhojMelghatSpider,
+        ArogyasathiSpider,
+        HaqCentreSpider,
+        GramVikasSpider,
+        BaifSpider,
+        GravisSpider,
+    )
+except ModuleNotFoundError:
+    # Support running as: python backend/scrapers/ngo_reports/run_spiders.py
+    repo_root = Path(__file__).resolve().parents[3]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    MODULE_PREFIX = "backend.scrapers"
+    from backend.scrapers.ngo_reports import settings as ngo_settings
+    from backend.scrapers.ngo_reports.spiders import (
+        ActionAidIndiaReportsSpider,
+        OxfamIndiaReportsSpider,
+        PradanReportsSpider,
+        VHAIReportsSpider,
+        MahanTrustSpider,
+        KhojMelghatSpider,
+        ArogyasathiSpider,
+        HaqCentreSpider,
+        GramVikasSpider,
+        BaifSpider,
+        GravisSpider,
+    )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run NGO report spiders and export JSONL output.")
-    parser.add_argument("--output", required=True, help="Path to JSONL output file")
+    parser.add_argument("--output", default="backend/data/ngo_reports.jsonl", help="Path to JSONL output file")
     parser.add_argument("--max-pages", type=int, default=40, help="Max report links per spider")
     args = parser.parse_args()
 
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    default_spider_module = f"{MODULE_PREFIX}.ngo_reports.spiders"
+    spider_module = os.getenv("NGO_SPIDER_MODULE", default_spider_module)
+    new_spider_module = os.getenv("NGO_NEW_SPIDER_MODULE", default_spider_module)
+
     process_settings = {
         "BOT_NAME": ngo_settings.BOT_NAME,
-        "SPIDER_MODULES": ngo_settings.SPIDER_MODULES,
-        "NEWSPIDER_MODULE": ngo_settings.NEWSPIDER_MODULE,
+        "SPIDER_MODULES": [spider_module],
+        "NEWSPIDER_MODULE": new_spider_module,
         "ROBOTSTXT_OBEY": ngo_settings.ROBOTSTXT_OBEY,
         "DOWNLOAD_DELAY": ngo_settings.DOWNLOAD_DELAY,
         "CONCURRENT_REQUESTS": ngo_settings.CONCURRENT_REQUESTS,
@@ -38,7 +75,7 @@ def main() -> None:
         "PLAYWRIGHT_LAUNCH_OPTIONS": ngo_settings.PLAYWRIGHT_LAUNCH_OPTIONS,
         "DOWNLOAD_HANDLERS": ngo_settings.DOWNLOAD_HANDLERS,
         "FEEDS": {
-            args.output: {
+            str(output_path): {
                 "format": "jsonlines",
                 "encoding": "utf8",
                 "overwrite": False,
@@ -53,10 +90,14 @@ def main() -> None:
         OxfamIndiaReportsSpider,
         ActionAidIndiaReportsSpider,
         PradanReportsSpider,
-        SphereIndiaReportsSpider,
-        SewaBharatReportsSpider,
-        NFIReportsSpider,
         VHAIReportsSpider,
+        MahanTrustSpider,
+        KhojMelghatSpider,
+        ArogyasathiSpider,
+        HaqCentreSpider,
+        GramVikasSpider,
+        BaifSpider,
+        GravisSpider,
     ]
     for spider_cls in spiders:
         process.crawl(spider_cls, max_pages=args.max_pages)

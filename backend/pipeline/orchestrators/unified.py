@@ -24,7 +24,7 @@ are wrapped in asyncio.get_event_loop().run_in_executor() inside each module.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from pipeline.core.pubsub import broker
 from pipeline.core.schemas import UnifiedIngestionEvent, to_crisis_event, FALLBACK_INDIA_LAT, FALLBACK_INDIA_LON
@@ -39,6 +39,24 @@ from severity_engine import severity_engine
 from severity_engine.constants import CLASSIFICATION_TO_SEVERITY_LABEL
 
 logger = logging.getLogger(__name__)
+
+_TASK_TEMPLATES: dict[str, list[dict[str, Any]]] = {
+    "medical": [
+        {"title": "Support anganwadi nutrition screening", "skills": ["medical", "counseling"]},
+        {"title": "Assist maternal and child health outreach", "skills": ["medical"]},
+    ],
+    "food": [
+        {"title": "Coordinate ration verification and distribution", "skills": ["logistics"]},
+        {"title": "Map high-risk households for follow-up", "skills": ["counseling"]},
+    ],
+    "flood": [
+        {"title": "Run safe-water and sanitation check", "skills": ["rescue", "logistics"]},
+        {"title": "Prioritize vulnerable households for evacuation", "skills": ["rescue"]},
+    ],
+    "other": [
+        {"title": "Conduct rapid household vulnerability survey", "skills": ["logistics", "counseling"]},
+    ],
+}
 
 # Source tier mapping by ingestor name prefix
 _SOURCE_TIER: dict[str, int] = {
@@ -64,6 +82,40 @@ def _infer_source_tier(source: str) -> int:
         if source.upper().startswith(prefix):
             return tier
     return 2  # default: crowd-sourced
+
+
+def _build_historical_tasks(
+    event: UnifiedIngestionEvent,
+    severity_payload: dict[str, Any],
+    community_context: dict[str, Any],
+    nearby_volunteer_count: int,
+) -> list[dict[str, Any]]:
+    templates = _TASK_TEMPLATES.get(event.need_type, _TASK_TEMPLATES["other"])
+    urgency = float(severity_payload.get("composite_urgency", 0.0) or 0.0)
+    recurrence = float(community_context.get("historical_crisis_frequency", 0.0) or 0.0)
+    infra_gaps = community_context.get("infrastructure_gaps", []) or []
+    vulnerable = community_context.get("vulnerable_groups", []) or []
+
+    tasks: list[dict[str, Any]] = []
+    for idx, template in enumerate(templates, start=1):
+        gap_penalty = 0.15 if nearby_volunteer_count < 3 else 0.0
+        priority = max(0.0, min(1.0, urgency + (0.02 * min(recurrence, 10.0)) + gap_penalty))
+        tasks.append(
+            {
+                "task_code": f"{event.need_type}:{idx}",
+                "title": template["title"],
+                "required_skills": template.get("skills", []),
+                "priority": round(priority, 3),
+                "recommended_response_time": severity_payload.get("recommended_response_time", "48h"),
+                "historical_drivers": {
+                    "infrastructure_gaps": infra_gaps,
+                    "vulnerable_groups": vulnerable,
+                    "historical_crisis_frequency": round(recurrence, 3),
+                },
+                "volunteer_gap": max(0, 3 - nearby_volunteer_count),
+            }
+        )
+    return tasks
 
 
 class UnifiedPipeline:
@@ -227,6 +279,20 @@ class UnifiedPipeline:
             }
         )
 
+        community_context = {
+            "community_id": str(event.metadata.get("community_id", "")),
+            "community_name": str(event.metadata.get("community_name", "")),
+            "historical_crisis_frequency": float(event.metadata.get("historical_crisis_frequency", 0.0) or 0.0),
+            "infrastructure_gaps": event.metadata.get("infrastructure_gaps", []) or [],
+            "vulnerable_groups": event.metadata.get("vulnerable_groups", []) or [],
+        }
+        recommended_tasks = _build_historical_tasks(
+            event=event,
+            severity_payload=severity_payload,
+            community_context=community_context,
+            nearby_volunteer_count=len(nearby),
+        )
+
         # Step 7 — Storage fan-out (all writes fire concurrently)
         if not event.geohash:
             logger.warning(
@@ -244,6 +310,19 @@ class UnifiedPipeline:
             firestore_store.upsert_region(event, final_score),
             firestore_store.append_event(event, final_score),
             firestore_store.upsert_chronic_score(event, severity_payload),
+            firestore_store.upsert_historical_context(
+                event,
+                severity_payload,
+                community_context,
+                len(nearby),
+                recommended_tasks,
+            ),
+            firestore_store.upsert_volunteer_area_tasks(
+                event,
+                community_context,
+                severity_payload,
+                recommended_tasks,
+            ),
             bigquery_store.append(event, final_score),
             bigquery_store.append_severity_event(event, severity_payload),
             bigquery_store.append_severity_timeseries(event, severity_payload),

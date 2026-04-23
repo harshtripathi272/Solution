@@ -26,4 +26,17 @@ class CommunityGraphApiService {
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
     return CommunityProfile.fromMap(payload);
   }
+
+  Future<Map<String, dynamic>> fetchRecentNeeds({
+    int limit = 20,
+    int hours = 48,
+  }) async {
+    final response = await _client.get(
+      '/api/v1/community-graph/needs/recent?limit=$limit&hours=$hours',
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load recent needs: ${response.statusCode}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
 }

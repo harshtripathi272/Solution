@@ -14,15 +14,15 @@ except Exception:  # pragma: no cover - optional parser fallback
 
 KEYWORDS = ["report", "publication", "research", "assessment", "brief", "study"]
 REGION_TERMS = [
-    "assam",
-    "bihar",
-    "jharkhand",
-    "chhattisgarh",
-    "bundelkhand",
-    "marathwada",
     "maharashtra",
-    "uttar pradesh",
-    "madhya pradesh",
+    "haryana",
+    "odisha",
+    "rajasthan",
+    "amravati",
+    "nuh",
+    "mewat",
+    "koraput",
+    "barmer",
 ]
 DATE_PATTERNS = [
     r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b",
@@ -184,11 +184,12 @@ class OxfamIndiaReportsSpider(BaseNGOReportsSpider):
 class ActionAidIndiaReportsSpider(BaseNGOReportsSpider):
     name = "actionaid_india_reports"
     source_org = "ActionAid India"
-    # User suggested state-filtered URLs for better targeting
+    # Keep focus aligned with configured communities only.
     start_urls = [
-        "https://www.actionaidindia.org/publications/?title=UP&theme=&year_action=",
-        "https://www.actionaidindia.org/publications/?title=Bihar&theme=&year_action=",
-        "https://www.actionaidindia.org/publications/?title=Assam&theme=&year_action=",
+        "https://www.actionaidindia.org/publications/?title=Maharashtra&theme=&year_action=",
+        "https://www.actionaidindia.org/publications/?title=Haryana&theme=&year_action=",
+        "https://www.actionaidindia.org/publications/?title=Odisha&theme=&year_action=",
+        "https://www.actionaidindia.org/publications/?title=Rajasthan&theme=&year_action=",
     ]
 
     def _extract_candidate_links(self, response: scrapy.http.Response) -> list[str]:
@@ -227,22 +228,22 @@ class PradanReportsSpider(BaseNGOReportsSpider):
         return super()._extract_pdf_url(response)
 
 
-class SphereIndiaReportsSpider(BaseNGOReportsSpider):
-    name = "sphere_india_reports"
-    source_org = "Sphere India"
-    start_urls = ["https://www.sphereindia.org.in/situation-reports/"]
+# class SphereIndiaReportsSpider(BaseNGOReportsSpider):
+#     name = "sphere_india_reports"
+#     source_org = "Sphere India"
+#     start_urls = ["https://www.sphereindia.org.in/situation-reports/"]
 
 
-class SewaBharatReportsSpider(BaseNGOReportsSpider):
-    name = "sewa_bharat_reports"
-    source_org = "SEWA Bharat"
-    start_urls = ["https://sewabharat.org/research/"]
+# class SewaBharatReportsSpider(BaseNGOReportsSpider):
+#     name = "sewa_bharat_reports"
+#     source_org = "SEWA Bharat"
+#     start_urls = ["https://sewabharat.org/research/"]
 
 
-class NFIReportsSpider(BaseNGOReportsSpider):
-    name = "nfi_reports"
-    source_org = "National Foundation for India"
-    start_urls = ["https://nfi.org.in/climate-report"]
+# class NFIReportsSpider(BaseNGOReportsSpider):
+#     name = "nfi_reports"
+#     source_org = "National Foundation for India"
+#     start_urls = ["https://nfi.org.in/climate-report"]
 
 
 class VHAIReportsSpider(BaseNGOReportsSpider):
@@ -265,7 +266,33 @@ class VHAIReportsSpider(BaseNGOReportsSpider):
 class MahanTrustSpider(BaseNGOReportsSpider):
     name = "mahan_trust_reports"
     source_org = "MAHAN Trust"
-    start_urls = ["https://mahantrustindia.org/reports"]
+    start_urls = ["https://www.mahantrust.org/certificates-and-reports"]
+
+    def _extract_candidate_links(self, response: scrapy.http.Response) -> list[str]:
+        # Annual report cards on Mahan Trust use the LhCmu6 class.
+        links = response.css("a.LhCmu6::attr(href)").getall()
+        if not links:
+            links = response.css("a[href$='.pdf']::attr(href)").getall()
+        if not links:
+            links = super()._extract_candidate_links(response)
+
+        abs_links = [urljoin(response.url, link) for link in links if link]
+        return list(dict.fromkeys(abs_links))
+
+    def _extract_pdf_url(self, response: scrapy.http.Response) -> str:
+        candidate = response.css("a.LhCmu6[href$='.pdf']::attr(href)").get()
+        if candidate:
+            return urljoin(response.url, candidate)
+
+        candidate = response.css("a.LhCmu6::attr(href)").get()
+        if candidate and candidate.lower().endswith(".pdf"):
+            return urljoin(response.url, candidate)
+
+        candidate = response.css("a[href$='.pdf']::attr(href)").get()
+        if candidate:
+            return urljoin(response.url, candidate)
+
+        return super()._extract_pdf_url(response)
 
 class KhojMelghatSpider(BaseNGOReportsSpider):
     name = "khoj_melghat_reports"
@@ -275,40 +302,91 @@ class KhojMelghatSpider(BaseNGOReportsSpider):
 class ArogyasathiSpider(BaseNGOReportsSpider):
     name = "arogyasathi_reports"
     source_org = "Amhi Amchya Arogyasathi"
-    start_urls = ["https://arogyasathi.org/reports"]
+    start_urls = ["https://arogyasathi.org/publication/#annual-reports"]
 
 class HaqCentreSpider(BaseNGOReportsSpider):
     name = "haq_centre_reports"
     source_org = "HAQ Centre"
-    start_urls = ["https://haqcrc.org/reports"]
+    start_urls = ["https://www.haqcrc.org/about-us/annual-reports-accounts/"]
 
-class MewatVikasSpider(BaseNGOReportsSpider):
-    name = "mewat_vikas_reports"
-    source_org = "Mewat Vikas Sabha"
-    start_urls = ["https://mewatvikassabha.org/reports"]
+
 
 class GramVikasSpider(BaseNGOReportsSpider):
     name = "gram_vikas_reports"
     source_org = "Gram Vikas"
-    start_urls = ["https://gramvikas.org/reports"]
+    start_urls = [
+        "https://gramvikas.org/reports",
+        "https://www.gramvikas.org/focus_area/water/",
+        "https://www.gramvikas.org/focus_area/livelihoods/",
+        "https://www.gramvikas.org/focus_area/sanitation-hygiene/",
+        "https://www.gramvikas.org/focus_area/habitat-technologies/",
+        "https://www.gramvikas.org/focus_area/village-institutions/",
+        "https://www.gramvikas.org/focus_area/education/",
+        "https://www.gramvikas.org/focus_area/disaster-response/",
+    ]
 
-class VasundharaSpider(BaseNGOReportsSpider):
-    name = "vasundhara_reports"
-    source_org = "Vasundhara"
-    start_urls = ["https://vasundhara.org/reports"]
+    def parse_listing(self, response: scrapy.http.Response):
+        # Check if this is a focus area page (contains focus_area in URL)
+        if "/focus_area/" in response.url:
+            # Extract HTML content directly from focus area pages
+            title = self._extract_title(response)
+            text_blob = self._extract_text_blob(response)
+            focus_area = response.url.split("/focus_area/")[1].strip("/").replace("-", " ").title()
+            
+            yield {
+                "source_org": self.source_org,
+                "source_url": response.url,
+                "pdf_url": "",
+                "title": f"Focus Area: {focus_area}" if focus_area else title,
+                "published_on": self._extract_date(text_blob),
+                "region_tags": self._extract_regions(text_blob),
+                "snippet": text_blob[:400],
+                "raw_text": text_blob[:2000],
+                "collected_at": datetime.now(timezone.utc).isoformat(),
+            }
+            return
+        
+        # Otherwise, proceed with normal PDF link extraction
+        links = self._extract_candidate_links(response)
+        for link in links:
+            if link in self._seen_urls:
+                continue
+            
+            if self._enqueued >= self.max_pages:
+                break
 
-class TarunBharatSpider(BaseNGOReportsSpider):
-    name = "tarun_bharat_reports"
-    source_org = "Tarun Bharat Sangh"
-    start_urls = ["https://tarunbharatsangh.in/reports"]
+            if link.lower().endswith(".pdf"):
+                self._enqueued += 1
+                self._seen_urls.add(link)
+                yield self._build_item(response, link, is_pdf=True)
+                continue
+
+            self._enqueued += 1
+            self._seen_urls.add(link)
+            yield scrapy.Request(
+                link,
+                callback=self.parse_report_page,
+                meta={"playwright": True},
+                dont_filter=True,
+            )
+
+# class VasundharaSpider(BaseNGOReportsSpider):
+#     name = "vasundhara_reports"
+#     source_org = "Vasundhara"
+#     start_urls = ["https://vasundhara.org/reports"]
+
+# class TarunBharatSpider(BaseNGOReportsSpider):
+#     name = "tarun_bharat_reports"
+#     source_org = "Tarun Bharat Sangh"
+#     start_urls = ["https://tarunbharatsangh.in/reports"]
 
 class BaifSpider(BaseNGOReportsSpider):
     name = "baif_reports"
     source_org = "BAIF"
-    start_urls = ["https://baif.org.in/reports"]
+    start_urls = ["https://baif.org.in/knowledge-hub/publication/research-papers-case-studies/"]
 
 class GravisSpider(BaseNGOReportsSpider):
     name = "gravis_reports"
     source_org = "GRAVIS"
-    start_urls = ["https://gravis.org.in/reports"]
+    start_urls = ["https://gravis.org.in/research-studies-and-publications/"]
 

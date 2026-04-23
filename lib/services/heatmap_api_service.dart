@@ -39,7 +39,7 @@ class HeatmapApiService {
   /// Fetches aggregated heatmap data from backend API
   /// 
   /// Parameters:
-  /// - [region]: Filter by region (e.g., "bihar", "assam")
+  /// - [region]: Filter by region (e.g., "maharashtra", "odisha")
   /// - [needType]: Filter by need type (e.g., "water_sanitation", "medical")
   /// - [minSeverity]: Minimum severity threshold (0.0–1.0)
   /// - [timeRange]: Time range for data (e.g., "30d", "90d")

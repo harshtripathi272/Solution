@@ -12,7 +12,7 @@ class AppState extends ChangeNotifier {
   // Current user
   ApiClient? _apiClient;
   LocationService? _locationService;
-  UserRole _currentRole = UserRole.volunteer; 
+  UserRole _currentRole = UserRole.volunteer;
   AppUser? _currentUser;
   bool _isLoadingUser = false;
   final bool _isLoading = false;
@@ -47,6 +47,58 @@ class AppState extends ChangeNotifier {
     return const [];
   }
 
+  Future<void> refreshHistoricalTasks({
+    double? latitude,
+    double? longitude,
+    double radiusKm = 30.0,
+    int limit = 20,
+  }) async {
+    if (_apiClient == null || _currentUser == null) {
+      return;
+    }
+
+    final isVolunteer = _currentRole == UserRole.volunteer;
+    final queryParams = <String, String>{
+      'radius_km': radiusKm.toString(),
+      'limit': limit.toString(),
+    };
+
+    if (latitude != null && longitude != null) {
+      queryParams['latitude'] = latitude.toString();
+      queryParams['longitude'] = longitude.toString();
+    } else if (!isVolunteer) {
+      // Coordinators and NGO workers can inspect global context without a shared location.
+    } else {
+      return;
+    }
+
+    try {
+      final uri = Uri.parse(
+        'http://127.0.0.1:8000/api/v1/tasks',
+      ).replace(queryParameters: queryParams);
+      final response = await _apiClient!.get(
+        uri.path + (uri.hasQuery ? '?${uri.query}' : ''),
+      );
+      if (response.statusCode != 200) {
+        return;
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final rawTasks = (data['tasks'] as List<dynamic>?) ?? const [];
+      final tasks = rawTasks
+          .whereType<Map<String, dynamic>>()
+          .map(VolunteerTask.fromMap)
+          .toList();
+
+      _tasks
+        ..clear()
+        ..addAll(tasks);
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) print('[AppState] refreshHistoricalTasks failed: $e');
+    }
+  }
+
   void setRequestedRole(UserRole role) {
     _requestedRole = role;
   }
@@ -65,8 +117,13 @@ class AppState extends ChangeNotifier {
   List<VolunteerTask> get tasks => _tasks;
   List<VolunteerTask> get openTasks =>
       _tasks.where((t) => t.status == TaskStatus.open).toList();
-  List<VolunteerTask> get activeTasks =>
-      _tasks.where((t) => t.status == TaskStatus.assigned || t.status == TaskStatus.inProgress).toList();
+  List<VolunteerTask> get activeTasks => _tasks
+      .where(
+        (t) =>
+            t.status == TaskStatus.assigned ||
+            t.status == TaskStatus.inProgress,
+      )
+      .toList();
   List<VolunteerTask> get completedTasks =>
       _tasks.where((t) => t.status == TaskStatus.completed).toList();
   List<AppUser> get volunteers => _volunteers;
@@ -79,8 +136,9 @@ class AppState extends ChangeNotifier {
   int get currentNavIndex => _currentNavIndex;
 
   // Stats
-  int get criticalTaskCount =>
-      _tasks.where((t) => t.urgency == 'Critical' && t.status != TaskStatus.completed).length;
+  int get criticalTaskCount => _tasks
+      .where((t) => t.urgency == 'Critical' && t.status != TaskStatus.completed)
+      .length;
   int get totalPeopleAffected =>
       _reports.fold(0, (sum, r) => sum + r.estimatedPeopleAffected);
 
@@ -101,8 +159,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _apiClient = ApiClient(baseUrl: "http://127.0.0.1:8000"); 
-      
+      _apiClient = ApiClient(baseUrl: "http://127.0.0.1:8000");
+
       // Pass the requested role if the user just signed up
       final payload = <String, dynamic>{};
       if (_requestedRole != null) {
@@ -112,10 +170,10 @@ class AppState extends ChangeNotifier {
 
       // Calls FastApi to verify token and return profile
       final response = await _apiClient!.post("/api/v1/auth/register", payload);
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        
+
         // Map backend role enum to local Flutter enum
         UserRole mappedRole = UserRole.volunteer;
         if (data['role'] == 'coordinator') mappedRole = UserRole.coordinator;
@@ -134,8 +192,10 @@ class AppState extends ChangeNotifier {
           isAvailable: data['is_available'] ?? true,
           createdAt: _parseBackendDate(data['created_at']),
         );
+        await refreshHistoricalTasks();
       } else {
-        _backendError = "Permission denied or backend error. Code: ${response.statusCode}";
+        _backendError =
+            "Permission denied or backend error. Code: ${response.statusCode}";
       }
     } catch (e) {
       _backendError = "Could not connect to the SevaSetu secure server.";
@@ -218,7 +278,8 @@ class AppState extends ChangeNotifier {
           submittedBy: _currentUser?.id ?? 'me',
           needType: needType,
           description: description,
-          location: "${pos['lat']?.toStringAsFixed(3)}, ${pos['lon']?.toStringAsFixed(3)}",
+          location:
+              "${pos['lat']?.toStringAsFixed(3)}, ${pos['lon']?.toStringAsFixed(3)}",
           latitude: pos['lat']!,
           longitude: pos['lon']!,
           urgency: urgency,

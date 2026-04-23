@@ -10,6 +10,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from tqdm.asyncio import tqdm
+
 from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent
 from pipeline.processing.community_resolver import community_resolver
 from .base import PeriodicIngestor
@@ -29,7 +31,8 @@ class NGOReportsIngestor(PeriodicIngestor):
         records = await self._run_scrapy(max_pages=max_pages)
 
         events: list[UnifiedIngestionEvent] = []
-        for rec in records:
+        logger.info("[NGOReports] Processing %d scraped records into events...", len(records))
+        for rec in tqdm(records, desc="Normalizing NGO reports"):
             event = self._to_event(rec)
             if event:
                 events.append(event)

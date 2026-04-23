@@ -39,17 +39,14 @@ class VolunteerLocation:
 
 class RedisLocationStore:
     def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0):
+        # socket_timeout prevents indefinite blocking when Redis is unavailable on startup.
         self.redis = redis.Redis(host=host, port=port, db=db,
-                                 decode_responses=True)
-        self._test_connection()
-
-    def _test_connection(self):
-        try:
-            self.redis.ping()
-            logger.info("[LocationStore] Connected to Redis ✓")
-        except redis.ConnectionError:
-            logger.warning("[LocationStore] Redis unavailable – location tracking disabled.")
-            self.redis = None  # type: ignore
+                                 decode_responses=True,
+                                 socket_connect_timeout=2,
+                                 socket_timeout=2)
+        # Removed synchronous .ping() to prevent 28s Windows IPv6 TCP timeout 
+        # when Redis is unavailable during module import.
+        logger.info("[LocationStore] Redis initialized (lazy connect).")
 
     #  Write path                                                          
     def update_location(self, user_id: str, lat: float, lon: float,
@@ -177,6 +174,41 @@ class RedisLocationStore:
             ))
 
         return results
+
+    def get_user_location(self, user_id: str) -> Optional[VolunteerLocation]:
+        """Returns the latest shared location for a user, if still fresh."""
+        if not self.redis:
+            return None
+
+        user_key = f"user:{user_id}:location"
+        data = self.redis.hgetall(user_key)
+        if not data:
+            return None
+
+        try:
+            ts_epoch = float(data.get("ts_epoch", 0))
+            lat_val = float(data["lat"])
+            lon_val = float(data["lon"])
+        except (KeyError, TypeError, ValueError):
+            return None
+
+        if ts_epoch < (time.time() - LOCATION_TTL):
+            return None
+
+        try:
+            skills = json.loads(data.get("skills", "[]"))
+            if not isinstance(skills, list):
+                skills = []
+        except Exception:
+            skills = []
+
+        return VolunteerLocation(
+            user_id=user_id,
+            lat=lat_val,
+            lon=lon_val,
+            timestamp=datetime.fromtimestamp(ts_epoch, tz=timezone.utc),
+            skills=skills,
+        )
 
     def remove_user(self, user_id: str):
         """Called when a volunteer explicitly disables location sharing."""

@@ -19,6 +19,7 @@ except ImportError:  # pragma: no cover - optional dependency
 
 _DEFAULT_SPACY_MODEL = "en_core_web_sm"
 _MIN_SCORE = 0.42
+_ALLOW_KEYWORD_FALLBACK = os.getenv("COMMUNITY_ALLOW_KEYWORD_FALLBACK", "false").strip().lower() == "true"
 
 
 @dataclass(slots=True)
@@ -43,7 +44,7 @@ class CommunityResolver:
         self._nlp = None
         self._spacy_ready = False
         self._load_communities(data_file)
-        self._load_spacy()
+        # spacy is loaded lazily on first _extract_entities call
 
     def _load_communities(self, data_file: Path) -> None:
         try:
@@ -57,39 +58,50 @@ class CommunityResolver:
         except Exception as exc:
             logger.error("[CommunityResolver] Failed to load communities.json: %s", exc)
 
-    def _load_spacy(self) -> None:
+    def _ensure_spacy(self) -> None:
+        if self._spacy_ready or self._nlp is not None:
+            return  # Already loaded
+            
         if spacy is None:
             logger.info("[CommunityResolver] spaCy not installed; using fuzzy matching only.")
+            self._spacy_ready = True  # Mark ready so we don't spam logs
             return
 
         requested_model = os.getenv("COMMUNITY_SPACY_MODEL", _DEFAULT_SPACY_MODEL).strip() or _DEFAULT_SPACY_MODEL
         try:
             self._nlp = spacy.load(requested_model)
             self._spacy_ready = True
-            logger.info("[CommunityResolver] spaCy model ready: %s", requested_model)
+            logger.info("[CommunityResolver] loaded spaCy model: %s", requested_model)
         except Exception:
             try:
                 self._nlp = spacy.blank("en")
                 self._spacy_ready = True
                 logger.info("[CommunityResolver] Using blank spaCy pipeline for token support.")
-            except Exception as exc:  # pragma: no cover - optional dependency failure
+            except Exception as exc:
                 self._nlp = None
-                self._spacy_ready = False
+                self._spacy_ready = True # Prevent infinite retries
                 logger.warning("[CommunityResolver] spaCy unavailable: %s", exc)
+
 
     @staticmethod
     def _normalize_community(item: dict[str, Any]) -> dict[str, Any]:
         aliases = set()
+        # Keep aliases geo-first so resolution is tied to actual community locations.
         aliases.update(CommunityResolver._split_aliases(item.get("name")))
         aliases.update(CommunityResolver._split_aliases(item.get("district")))
         aliases.update(CommunityResolver._split_aliases(item.get("block")))
         aliases.update(CommunityResolver._split_aliases(item.get("region")))
-        aliases.update(CommunityResolver._split_aliases(item.get("keywords")))
-        aliases.update(CommunityResolver._split_aliases(item.get("target_ngos")))
         for extra in item.get("aliases", []) or []:
             aliases.update(CommunityResolver._split_aliases(extra))
 
         item = dict(item)
+        baseline = dict(item.get("default_chronic_baseline") or {})
+        baseline.setdefault("malnutrition_rate", 0.0)
+        baseline.setdefault("infrastructure_gaps", [])
+        baseline.setdefault("vulnerable_groups", [])
+        item["default_chronic_baseline"] = baseline
+        item.setdefault("keywords", [])
+        item.setdefault("target_ngos", [])
         item["aliases"] = sorted({alias for alias in aliases if alias})
         item.setdefault("admin_level", "village")
         return item
@@ -109,6 +121,7 @@ class CommunityResolver:
         return re.sub(r"\s+", " ", value.lower().strip())
 
     def _extract_entities(self, text: str) -> list[str]:
+        self._ensure_spacy()
         if not self._spacy_ready or self._nlp is None:
             return []
 
@@ -163,7 +176,7 @@ class CommunityResolver:
                     matched_terms.append(alias)
                     match_source = "ner"
 
-        if not matched_terms and community.get("keywords"):
+        if _ALLOW_KEYWORD_FALLBACK and not matched_terms and community.get("keywords"):
             keywords = community.get("keywords", []) or []
             for keyword in keywords:
                 keyword_norm = self._normalize_text(str(keyword))
