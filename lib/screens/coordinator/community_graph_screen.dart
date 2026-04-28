@@ -7,6 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../config/theme.dart';
 import '../../models/community_graph_models.dart';
 import '../../services/community_graph_api_service.dart';
+import 'community_detail_screen.dart';
+import 'heatmap_screen.dart';
 
 class CommunityGraphScreen extends StatefulWidget {
   const CommunityGraphScreen({super.key});
@@ -217,41 +219,27 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
   }
 
   Widget _buildHeatmapView(ThemeData theme) {
-    // Import and display the heatmap view
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFfbf9f9), Color(0xFFf2efec), Color(0xFFeef4ef)],
-          stops: [0.0, 0.55, 1.0],
-        ),
-      ),
-      child: SafeArea(
-        child: Stack(
-          children: [
-            // Placeholder for heatmap - in production, embed HeatmapScreen here
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.thermostat, size: 64, color: AppColors.primary.withValues(alpha: 0.3)),
-                  const SizedBox(height: 16),
-                  Text('Heatmap View', style: theme.textTheme.headlineSmall),
-                  const SizedBox(height: 8),
-                  Text('Geographic distribution of community needs', style: theme.textTheme.bodySmall),
-                  const SizedBox(height: 32),
-                  ElevatedButton.icon(
-                    onPressed: () => setState(() => _showHeatmap = false),
-                    icon: const Icon(Icons.hub),
-                    label: const Text('Back to Constellation Map'),
-                  ),
-                ],
+    // Embed the actual HeatmapScreen widget
+    return Stack(
+      children: [
+        const HeatmapScreen(),
+        Positioned(
+          top: 16,
+          left: 16,
+          child: SafeArea(
+            child: ElevatedButton.icon(
+              onPressed: () => setState(() => _showHeatmap = false),
+              icon: const Icon(Icons.hub),
+              label: const Text('Constellation Map'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.surface,
+                foregroundColor: AppColors.onSurface,
+                elevation: 4,
               ),
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -344,7 +332,7 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: AppDecorations.activeChip,
-                child: Text('$_timeWindowDays days', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.primary)),
+                child: Text('${_timeWindowDays.round()} days', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.primary)),
               ),
             ],
           ),
@@ -363,8 +351,8 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
               min: 30,
               max: 365,
               divisions: 11,
-              label: '${_timeWindowDays.toInt()} days',
-              onChanged: (value) => setState(() => _timeWindowDays = value),
+              label: '${_timeWindowDays.round()} days',
+              onChanged: (value) => setState(() => _timeWindowDays = value.roundToDouble()),
             ),
           ),
         ],
@@ -562,7 +550,7 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
               const SizedBox(width: 12),
               if ((profile.coordinationOpportunities.isNotEmpty))
                 TextButton.icon(
-                  onPressed: () {},
+                  onPressed: () => _showCoordinationNotes(context, profile),
                   icon: const Icon(Icons.group_work),
                   label: const Text('Coordination notes'),
                 ),
@@ -576,6 +564,99 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  void _showCoordinationNotes(BuildContext context, CommunityProfile profile) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return DraggableScrollableSheet(
+          initialChildSize: 0.5,
+          minChildSize: 0.3,
+          maxChildSize: 0.8,
+          expand: false,
+          builder: (_, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.all(24),
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.outlineVariant,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Coordination Notes', style: theme.textTheme.headlineSmall),
+                  const SizedBox(height: 8),
+                  Text(profile.name, style: theme.textTheme.titleMedium?.copyWith(color: AppColors.onSurfaceVariant)),
+                  const SizedBox(height: 24),
+                  ...profile.coordinationOpportunities.map((opp) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: AppDecorations.contentBlock,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (opp['type'] != null)
+                            Text(opp['type'].toString().toUpperCase(),
+                              style: theme.textTheme.labelLarge?.copyWith(color: AppColors.primary)),
+                          if (opp['description'] != null || opp['reason'] != null) ...[
+                            const SizedBox(height: 8),
+                            Text(opp['description']?.toString() ?? opp['reason']?.toString() ?? '',
+                              style: theme.textTheme.bodyMedium),
+                          ],
+                          if (opp['communities'] != null) ...[
+                            const SizedBox(height: 8),
+                            Text('Communities: ${(opp['communities'] as List).join(', ')}',
+                              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant)),
+                          ],
+                        ],
+                      ),
+                    );
+                  }),
+                  if (profile.similarity.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Text('Similar Communities', style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 12),
+                    ...profile.similarity.map((sim) => Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: AppDecorations.contentBlock,
+                      child: Row(
+                        children: [
+                          Icon(Icons.hub, size: 16, color: AppColors.primary),
+                          const SizedBox(width: 12),
+                          Expanded(child: Text(
+                            sim['community_name']?.toString() ?? sim['id']?.toString() ?? 'Unknown',
+                            style: theme.textTheme.bodyMedium,
+                          )),
+                          if (sim['score'] != null)
+                            Text('${((sim['score'] as num).toDouble() * 100).round()}% similar',
+                              style: theme.textTheme.labelMedium?.copyWith(color: AppColors.onSurfaceVariant)),
+                        ],
+                      ),
+                    )),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -594,7 +675,14 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
             padding: const EdgeInsets.only(bottom: 14),
             child: InkWell(
               borderRadius: BorderRadius.circular(24),
-              onTap: () => setState(() => _selectedCommunityId = profile.id),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => CommunityDetailScreen(profile: profile),
+                  ),
+                );
+                setState(() => _selectedCommunityId = profile.id);
+              },
               child: AnimatedContainer(
                 duration: 250.ms,
                 decoration: BoxDecoration(
@@ -903,7 +991,10 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
-        return Stack(
+        final graph = SizedBox(
+          width: width,
+          height: height,
+          child: Stack(
           children: [
             Positioned.fill(
               child: CustomPaint(
@@ -921,6 +1012,14 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
                   onTap: () {
                     if (node.kind == _GraphNodeKind.community) {
                       widget.onSelectCommunity(node.id);
+                      final raw = node.metadata;
+                      if (raw is CommunityProfile) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => CommunityDetailScreen(profile: raw),
+                          ),
+                        );
+                      }
                     }
                   },
                   child: AnimatedContainer(
@@ -958,6 +1057,14 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
               );
             }),
           ],
+        ),
+        );
+
+        return InteractiveViewer(
+          minScale: 0.65,
+          maxScale: 3.2,
+          boundaryMargin: const EdgeInsets.all(120),
+          child: graph,
         );
       },
     );
@@ -1044,16 +1151,6 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
       return value;
     }
     return value.substring(0, 11).trimRight() + '…';
-  }
-}
-
-class _MatrixSeverityColor {
-  static Color colorFor(double severity) {
-    if (severity >= 0.8) return const Color(0xFF7f1d1d);
-    if (severity >= 0.6) return const Color(0xFFc2410c);
-    if (severity >= 0.4) return const Color(0xFFd97706);
-    if (severity >= 0.2) return const Color(0xFF65a30d);
-    return AppColors.surfaceContainerHigh;
   }
 }
 

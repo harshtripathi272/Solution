@@ -11,8 +11,8 @@ cd backend
 # Copy environment configuration
 cp .env.example .env
 
-# Install any missing dependencies (usually already installed)
-pip install feedparser newspaper3k
+# Install project dependencies
+pip install -r requirements.txt
 
 # Verify Python syntax
 python -m py_compile pipeline/ingestors/*.py

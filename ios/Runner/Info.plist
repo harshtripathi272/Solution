@@ -43,6 +43,12 @@
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Capture field photos for NGO reports.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Attach photos from your library to reports.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Attach audio notes when reporting a need.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 </dict>

@@ -24,7 +24,6 @@ class AppState extends ChangeNotifier {
   final List<VolunteerTask> _tasks = [];
   final List<AppUser> _volunteers = [];
   final List<CrisisAlert> _crisisAlerts = [];
-  final Map<String, dynamic> _impactMetrics = {};
 
   // UI state
   int _currentNavIndex = 0;
@@ -131,8 +130,55 @@ class AppState extends ChangeNotifier {
   List<CrisisAlert> get crisisAlerts => _crisisAlerts;
   List<CrisisAlert> get activeAlerts =>
       _crisisAlerts.where((a) => a.isActive).toList();
-  Map<String, dynamic> get impactMetrics => _impactMetrics;
+  Map<String, dynamic> get impactMetrics => _computeImpactMetrics();
   int get currentNavIndex => _currentNavIndex;
+  int get reportCount => _reports.length;
+
+  /// Computed SDG impact metrics from real task data
+  Map<String, dynamic> _computeImpactMetrics() {
+    final completed = completedTasks;
+    final total = _tasks.length;
+    final livesImproved = _tasks.fold<int>(0, (sum, t) => sum + t.estimatedPeopleAffected);
+    final completionRate = total > 0 ? (completed.length / total * 100).round() : 0;
+
+    // Group by SDG tags
+    final sdgCounts = <int, int>{};
+    final sdgPeople = <int, int>{};
+    for (final task in _tasks) {
+      for (final tag in task.sdgTags) {
+        sdgCounts[tag] = (sdgCounts[tag] ?? 0) + 1;
+        sdgPeople[tag] = (sdgPeople[tag] ?? 0) + task.estimatedPeopleAffected;
+      }
+    }
+
+    return {
+      'livesImproved': livesImproved,
+      'completedCount': completed.length,
+      'totalCount': total,
+      'completionRate': completionRate,
+      'sdgCounts': sdgCounts,
+      'sdgPeople': sdgPeople,
+    };
+  }
+
+  /// Generates synthetic crisis alerts from high-urgency open tasks
+  List<CrisisAlert> get derivedCrisisAlerts {
+    final criticalTasks = _tasks.where(
+      (t) => t.urgency == 'Critical' && t.status != TaskStatus.completed,
+    );
+    return criticalTasks.map((t) => CrisisAlert(
+      id: 'alert-${t.id}',
+      prediction: 'Critical need detected: ${t.title}',
+      affectedArea: t.ward.isNotEmpty ? t.ward : t.location,
+      ward: t.ward,
+      latitude: t.latitude,
+      longitude: t.longitude,
+      severity: AlertSeverity.critical,
+      dataSource: 'Pipeline Analysis',
+      predictedDate: t.createdAt,
+      createdAt: t.createdAt,
+    )).toList();
+  }
 
   // Stats
   int get criticalTaskCount => _tasks
@@ -171,27 +217,22 @@ class AppState extends ChangeNotifier {
       final response = await _apiClient!.post("/api/v1/auth/register", payload);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        // Map backend role enum to local Flutter enum
-        UserRole mappedRole = UserRole.volunteer;
-        if (data['role'] == 'coordinator') mappedRole = UserRole.coordinator;
-        if (data['role'] == 'ngo_worker') mappedRole = UserRole.ngoWorker;
-
-        _currentRole = mappedRole;
-        _currentUser = AppUser(
-          id: data['uid'] ?? firebaseUser.uid,
-          name: data['name'] ?? firebaseUser.displayName ?? 'User',
-          email: data['email'] ?? firebaseUser.email ?? '',
-          role: mappedRole,
-          ngoId: data['organization_id'],
-          phone: data['phone'],
-          skills: _parseSkills(data['skills']),
-          location: data['location'],
-          isAvailable: data['is_available'] ?? true,
-          createdAt: _parseBackendDate(data['created_at']),
-        );
-        await refreshHistoricalTasks();
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        _applyRegisterPayload(data, firebaseUser);
+        final mappedRole = _currentRole;
+        if (mappedRole == UserRole.volunteer && _locationService != null) {
+          try {
+            final pos = await _locationService!.getCurrentPosition();
+            await refreshHistoricalTasks(
+              latitude: pos['lat'],
+              longitude: pos['lon'],
+            );
+          } catch (_) {
+            await refreshHistoricalTasks();
+          }
+        } else {
+          await refreshHistoricalTasks();
+        }
       } else {
         _backendError =
             "Permission denied or backend error. Code: ${response.statusCode}";
@@ -213,6 +254,39 @@ class AppState extends ChangeNotifier {
     if (_locationService != null) {
       await _locationService!.toggleTracking();
       notifyListeners();
+    }
+  }
+
+  /// Revoke location data from the backend (right to be forgotten)
+  Future<void> revokeLocation() async {
+    if (_locationService != null && _locationService!.isTracking) {
+      await _locationService!.toggleTracking(); // stop tracking first
+    }
+    try {
+      await _apiClient?.delete('/api/v1/location/revoke');
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  /// Submit severity feedback for a community need (coordinator only)
+  Future<bool> submitSeverityFeedback({
+    required String geohash,
+    required String needType,
+    required String feedback,
+    String? note,
+  }) async {
+    if (_apiClient == null) return false;
+    try {
+      final response = await _apiClient!.post('/api/v1/severity/feedback', {
+        'geohash': geohash,
+        'need_type': needType,
+        'feedback': feedback,
+        if (note != null && note.isNotEmpty) 'note': note,
+      });
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('[AppState] Severity feedback failed: $e');
+      return false;
     }
   }
 

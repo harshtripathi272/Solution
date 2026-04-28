@@ -215,8 +215,45 @@ class GlobalRSSMonitor(PeriodicIngestor):
                     events.append(event)
 
                 except Exception as article_exc:
-                    logger.debug("[GlobalRSSMonitor] Failed to scrape %s: %s", article_url, article_exc)
-                    continue
+                    logger.debug("[GlobalRSSMonitor] Failed to deep-scrape %s: %s", article_url, article_exc)
+
+                    # Fallback: use RSS entry title/summary so we still ingest signal-level events
+                    title = str(entry.get("title", ""))
+                    summary = str(entry.get("summary", ""))
+                    text = f"{title} {summary}".strip()
+                    text_lower = text.lower()
+
+                    need_type = self._classify_crisis(text_lower)
+                    if not need_type:
+                        continue
+
+                    published = entry.get("published", "")
+                    timestamp = self._parse_timestamp(published)
+                    severity = self._determine_severity(text_lower)
+                    confidence = max(0.5, self._calculate_confidence(text_lower, region) - 0.1)
+
+                    lat, lon = FALLBACK_INDIA_COORDS
+                    raw_id = f"rss:{hashlib.md5(article_url.encode()).hexdigest()}"
+                    event_id = hashlib.sha256(raw_id.encode()).hexdigest()[:24]
+
+                    event = UnifiedIngestionEvent(
+                        id=f"RSS-{event_id}",
+                        source="GLOBAL_RSS",
+                        timestamp=timestamp,
+                        location=IngestionLocation(latitude=lat, longitude=lon),
+                        need_type=need_type,
+                        severity=severity,
+                        confidence_score=confidence,
+                        description=title,
+                        metadata={
+                            "url": article_url,
+                            "region": region,
+                            "source_name": entry.get("source", {}).get("title", "Google News"),
+                            "article_text": text[:500],
+                            "fallback_mode": "rss_summary",
+                        },
+                    )
+                    events.append(event)
 
         except Exception as exc:
             logger.error("[GlobalRSSMonitor] RSS parse failed for %s: %s", region, exc)

@@ -1,4 +1,9 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../config/theme.dart';
@@ -16,6 +21,7 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
   String _needType = AppConstants.needTypes.first;
   String _urgency = 'Medium';
   final _descCtrl = TextEditingController();
+  final FocusNode _descFocus = FocusNode();
   
   bool _isSubmitting = false;
   bool _submitted = false;
@@ -53,14 +59,149 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
     }
   }
 
-  void _toggleMedia(String url) {
+  static const int _maxImageBytes = 900000;
+
+  final ImagePicker _imagePicker = ImagePicker();
+
+  Future<void> _showImagePickOptions() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Take photo'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _capturePhoto();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choose from gallery'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickPhotoFromGallery();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _capturePhoto() async {
+    try {
+      final xfile = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920,
+        imageQuality: 82,
+      );
+      await _consumeImage(xfile);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Camera unavailable: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickPhotoFromGallery() async {
+    try {
+      final xfile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        imageQuality: 82,
+      );
+      await _consumeImage(xfile);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open gallery: $e')),
+      );
+    }
+  }
+
+  Future<void> _consumeImage(XFile? xfile) async {
+    if (xfile == null) return;
+    final bytes = await xfile.readAsBytes();
+    if (bytes.length > _maxImageBytes) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Image too large — use a smaller photo (under ~900 KB).')),
+      );
+      return;
+    }
+    final ext = xfile.name.toLowerCase();
+    final mime = ext.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
     setState(() {
-      if (_mediaUrls.contains(url)) {
-        _mediaUrls.remove(url);
-      } else {
-        _mediaUrls.add(url);
-      }
+      _mediaUrls.removeWhere((u) => u.startsWith('data:image'));
+      _mediaUrls.add(dataUrl);
     });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Photo attached')),
+    );
+  }
+
+  Future<void> _pickAudio() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.audio,
+        withData: kIsWeb,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.single;
+      if (kIsWeb && file.bytes != null) {
+        final b64 = base64Encode(file.bytes!);
+        setState(() {
+          _mediaUrls.removeWhere((u) => u.startsWith('data:audio'));
+          _mediaUrls.add('data:audio/wav;base64,$b64');
+        });
+      } else if (file.path != null) {
+        setState(() {
+          _mediaUrls.removeWhere((u) => u.startsWith('file:') && _isAudioPath(u));
+          _mediaUrls.add(Uri.file(file.path!).toString());
+        });
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Audio file attached')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not attach audio: $e')),
+      );
+    }
+  }
+
+  bool _isAudioPath(String u) {
+    final lower = u.toLowerCase();
+    return lower.endsWith('.mp3') ||
+        lower.endsWith('.m4a') ||
+        lower.endsWith('.wav') ||
+        lower.endsWith('.aac');
+  }
+
+  bool get _hasPhoto => _mediaUrls.any((u) => u.startsWith('data:image'));
+  bool get _hasAudio =>
+      _mediaUrls.any((u) => u.startsWith('data:audio') || _isAudioPath(u));
+
+  @override
+  void dispose() {
+    _descCtrl.dispose();
+    _descFocus.dispose();
+    super.dispose();
   }
 
   @override
@@ -113,21 +254,25 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _sourceCard(
-                Icons.camera_alt, 
-                'Camera', 
-                _mediaUrls.any((u) => u.contains('photo')) ? AppColors.primary : AppColors.surfaceContainerHigh,
-                () => _toggleMedia('https://example.com/mock_field_photo.jpg'),
-                'https://example.com/mock_field_photo.jpg'
+                Icons.camera_alt,
+                'Photo',
+                _hasPhoto,
+                _showImagePickOptions,
               ).animate().fadeIn(delay: 150.ms).scaleXY(begin: 0.9),
               _sourceCard(
-                Icons.mic, 
-                'Voice', 
-                _mediaUrls.any((u) => u.contains('voice')) ? AppColors.primary : AppColors.surfaceContainerHigh,
-                () => _toggleMedia('https://example.com/mock_audio_note.mp3'),
-                'https://example.com/mock_audio_note.mp3'
+                Icons.audiotrack,
+                'Audio',
+                _hasAudio,
+                _pickAudio,
               ).animate().fadeIn(delay: 200.ms).scaleXY(begin: 0.9),
-              _sourceCard(Icons.edit_note, 'Text', AppColors.surfaceContainerHigh, () {}, '')
-                  .animate().fadeIn(delay: 250.ms).scaleXY(begin: 0.9),
+              _sourceCard(
+                Icons.edit_note,
+                'Details',
+                false,
+                () {
+                  FocusScope.of(context).requestFocus(_descFocus);
+                },
+              ).animate().fadeIn(delay: 250.ms).scaleXY(begin: 0.9),
             ],
           ),
           const SizedBox(height: 48),
@@ -212,6 +357,7 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
             ),
             child: TextField(
               controller: _descCtrl,
+              focusNode: _descFocus,
               maxLines: 5,
               enabled: !_isSubmitting,
               onChanged: (_) => setState(() {}), // To trigger step updates
@@ -248,52 +394,112 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
             ).animate(target: _descCtrl.text.isNotEmpty ? 1 : 0).scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1), duration: 200.ms),
           ).animate().fadeIn(delay: 600.ms).slideY(begin: 0.2),
           const SizedBox(height: 48),
+
+          // Past reports
+          Builder(builder: (ctx) {
+            final reports = context.watch<AppState>().reports;
+            if (reports.isEmpty) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Divider(),
+                const SizedBox(height: 24),
+                Text('Recent Submissions', style: theme.textTheme.headlineSmall)
+                    .animate().fadeIn(delay: 400.ms),
+                const SizedBox(height: 16),
+                ...reports.take(5).map((report) => Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: AppDecorations.contentBlock,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _urgencyColor(report.urgency).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(Icons.description, color: _urgencyColor(report.urgency), size: 20),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(report.needType, style: theme.textTheme.titleSmall),
+                            const SizedBox(height: 2),
+                            Text(report.description, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant)),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _urgencyColor(report.urgency).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(report.urgency, style: theme.textTheme.labelSmall?.copyWith(color: _urgencyColor(report.urgency))),
+                      ),
+                    ],
+                  ),
+                ).animate().fadeIn()),
+              ],
+            );
+          }),
         ],
       ),
     );
   }
 
-  Widget _sourceCard(IconData icon, String label, Color bgColor, VoidCallback onTap, String url) {
-    final theme = Theme.of(context);
-    final isSelected = _mediaUrls.contains(url);
-    final contentColor = isSelected ? Colors.white : AppColors.onSurface;
-    
-    Widget cardChild = Container(
-      width: (MediaQuery.of(context).size.width - 48 - 32) / 3,
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: isSelected ? [BoxShadow(color: bgColor.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 8))] : [],
-        border: Border.all(color: isSelected ? Colors.white.withValues(alpha: 0.2) : Colors.transparent),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: contentColor, size: 32),
-          const SizedBox(height: 12),
-          Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: contentColor, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
+  Color _urgencyColor(String urgency) => switch (urgency.toLowerCase()) {
+    'critical' => AppColors.error,
+    'high' => AppColors.warning,
+    'medium' => AppColors.info,
+    _ => AppColors.onSurfaceVariant,
+  };
 
-    if (isSelected && url.isNotEmpty) {
-      // Wrap with drag to dismiss
-      cardChild = Dismissible(
-        key: Key(url),
-        direction: DismissDirection.vertical,
-        onDismissed: (_) {
-          setState(() {
-            _mediaUrls.remove(url);
-          });
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label media removed')));
-        },
-        child: cardChild,
-      ).animate().shake(hz: 3, curve: Curves.easeOut); // subtle shake to indicate it's active
-    }
+  Widget _sourceCard(IconData icon, String label, bool selected, VoidCallback onTap) {
+    final theme = Theme.of(context);
+    final bgColor = selected ? AppColors.primary : AppColors.surfaceContainerHigh;
+    final contentColor = selected ? Colors.white : AppColors.onSurface;
 
     return GestureDetector(
       onTap: onTap,
-      child: cardChild,
+      child: Container(
+        width: (MediaQuery.of(context).size.width - 48 - 32) / 3,
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: bgColor.withValues(alpha: 0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+              : [],
+          border: Border.all(
+            color: selected ? Colors.white.withValues(alpha: 0.2) : Colors.transparent,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: contentColor, size: 32),
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: contentColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -76,8 +76,17 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
       );
 
       await ProfileService.updateVolunteerProfile(user.id, updatedUser);
+      await appState.refreshProfileFromServer();
 
       if (mounted) {
+        final u = appState.currentUser;
+        if (u != null) {
+          _nameController.text = u.name;
+          _phoneController.text = u.phone ?? '';
+          _locationController.text = u.location ?? '';
+          _editingSkills = List.from(u.skills);
+          _isAvailable = u.isAvailable;
+        }
         setState(() => _isEditing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile updated successfully!')),
@@ -202,8 +211,8 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildStatTile('Tasks Done', '${user.tasksCompleted}'),
-                      _buildStatTile('Hours', '${user.totalHoursVolunteered}'),
+                      _buildStatTile('Tasks Done', '${appState.completedTasks.length}'),
+                      _buildStatTile('Est. hours', '${appState.completedTasks.length * 2}'),
                       _buildStatTile('Trust Score', '${user.trustScore.toStringAsFixed(1)}/5'),
                     ],
                   ),
@@ -343,6 +352,86 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                   );
                 }).toList(),
               ),
+
+            // Location Privacy section
+            const SizedBox(height: 32),
+            Text('Location Privacy', style: theme.textTheme.headlineSmall),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: AppDecorations.contentBlock,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        appState.locationService?.isTracking == true
+                            ? Icons.location_on
+                            : Icons.location_off,
+                        color: appState.locationService?.isTracking == true
+                            ? AppColors.success
+                            : AppColors.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        appState.locationService?.isTracking == true
+                            ? 'Location is being shared'
+                            : 'Location sharing is off',
+                        style: theme.textTheme.titleSmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Your location is ephemeral and auto-expires after 2 hours. You can permanently delete it at any time.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => appState.toggleLocationTracking(),
+                          icon: Icon(appState.locationService?.isTracking == true ? Icons.pause : Icons.play_arrow),
+                          label: Text(appState.locationService?.isTracking == true ? 'Pause Sharing' : 'Start Sharing'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Delete Location Data'),
+                              content: const Text('This will permanently remove your location from our servers. Continue?'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Delete', style: TextStyle(color: AppColors.error)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true && mounted) {
+                            await context.read<AppState>().revokeLocation();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Location data deleted permanently.')),
+                              );
+                            }
+                          }
+                        },
+                        style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
+                        icon: const Icon(Icons.delete_forever),
+                        label: const Text('Delete Data'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
 
             if (_saveError != null) ...[
               const SizedBox(height: 24),

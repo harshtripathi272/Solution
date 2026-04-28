@@ -69,8 +69,15 @@ class _CoordinatorProfileScreenState extends State<CoordinatorProfileScreen> {
       );
 
       await ProfileService.updateCoordinatorProfile(user.id, updatedUser);
+      await appState.refreshProfileFromServer();
 
       if (mounted) {
+        final u = appState.currentUser;
+        if (u != null) {
+          _nameController.text = u.name;
+          _phoneController.text = u.phone ?? '';
+          _locationController.text = u.location ?? '';
+        }
         setState(() => _isEditing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile updated successfully!')),
@@ -178,14 +185,14 @@ class _CoordinatorProfileScreenState extends State<CoordinatorProfileScreen> {
                   ),
                   const SizedBox(height: 24),
                   // Stats
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildStatTile('Volunteers', '${user.tasksCompleted}'),
-                      _buildStatTile('Reports', '${user.totalHoursVolunteered}'),
-                      _buildStatTile('Trust', '${user.trustScore.toStringAsFixed(1)}/5'),
-                    ],
-                  ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildStatTile('Tasks', '${appState.tasks.length}'),
+                        _buildStatTile('Reports', '${appState.reportCount}'),
+                        _buildStatTile('Trust', '${user.trustScore.toStringAsFixed(1)}/5'),
+                      ],
+                    ),
                 ],
               ),
             ),

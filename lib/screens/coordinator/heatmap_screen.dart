@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -6,8 +7,11 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_heatmap/flutter_map_heatmap.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../config/theme.dart';
 import '../../models/heatmap_point.dart';
+import '../../providers/app_state.dart';
 import '../../services/heatmap_api_service.dart';
 
 class HeatmapScreen extends StatefulWidget {
@@ -33,7 +37,7 @@ class _HeatmapScreenState extends State<HeatmapScreen>
   bool _isLoading = false;
   String? _error;
   late Timer _refreshTimer;
-  final bool _isAutoRefreshEnabled = true;
+  bool _autoRefreshEnabled = true;
 
   final List<String> _regions = [
     'maharashtra',
@@ -81,10 +85,161 @@ class _HeatmapScreenState extends State<HeatmapScreen>
 
   void _startAutoRefresh() {
     _refreshTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-      if (_isAutoRefreshEnabled && mounted) {
+      if (_autoRefreshEnabled && mounted) {
         _loadHeatmapData();
       }
     });
+  }
+
+  void _onMapTapped(LatLng tap) {
+    HeatmapPoint? best;
+    var bestDist = 0.09;
+    for (final p in _heatmapData) {
+      final dLat = p.latitude - tap.latitude;
+      final dLon = p.longitude - tap.longitude;
+      final d = math.sqrt(dLat * dLat + dLon * dLon);
+      if (d < bestDist) {
+        bestDist = d;
+        best = p;
+      }
+    }
+    if (best == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hotspot near this tap — zoom in or pick a colored area.')),
+      );
+      return;
+    }
+    _showHeatmapPointSheet(best);
+  }
+
+  Future<void> _shareSnapshot() async {
+    final buf = StringBuffer('SevaSetu heatmap snapshot\n')
+      ..writeln('Points: ${_heatmapData.length}')
+      ..writeln('Region: ${_selectedRegion ?? 'all'} · Need: ${_selectedNeedType ?? 'all'}')
+      ..writeln('Time range: $_timeRange');
+    await Share.share(buf.toString(), subject: 'SevaSetu heatmap');
+  }
+
+  void _showHeatmapPointSheet(HeatmapPoint point) {
+    var feedbackChoice = 'stable';
+    final noteCtrl = TextEditingController();
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: StatefulBuilder(
+            builder: (context, setSheet) {
+              return DraggableScrollableSheet(
+                expand: false,
+                initialChildSize: 0.55,
+                minChildSize: 0.35,
+                maxChildSize: 0.9,
+                builder: (sheetCtx, scrollCtrl) {
+                  return ListView(
+                    controller: scrollCtrl,
+                    padding: const EdgeInsets.all(24),
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppColors.outlineVariant,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text('Hotspot detail', style: Theme.of(ctx).textTheme.headlineSmall),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${point.needType.replaceAll('_', ' ')} · ${point.severityLabel}',
+                        style: Theme.of(ctx).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Population signal: ${point.populationAffected} · Sources: ${point.sourceCount}',
+                        style: Theme.of(ctx).textTheme.bodyMedium,
+                      ),
+                      if (point.geohash.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        SelectableText(
+                          'Geohash: ${point.geohash}',
+                          style: Theme.of(ctx).textTheme.bodySmall,
+                        ),
+                      ],
+                      if (point.needTypeBreakdown.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text('Needs mix', style: Theme.of(ctx).textTheme.labelLarge),
+                        ...point.needTypeBreakdown.entries.map(
+                          (e) => Text('• ${e.key}: ${e.value}'),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      Text('Coordinator feedback', style: Theme.of(ctx).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      Text('Situation trend', style: Theme.of(ctx).textTheme.labelMedium),
+                      const SizedBox(height: 4),
+                      DropdownButton<String>(
+                        isExpanded: true,
+                        value: feedbackChoice,
+                        items: const [
+                          DropdownMenuItem(value: 'resolved', child: Text('Resolved / improving')),
+                          DropdownMenuItem(value: 'worsened', child: Text('Worsened')),
+                          DropdownMenuItem(value: 'stable', child: Text('Stable')),
+                        ],
+                        onChanged: (v) {
+                          if (v == null) return;
+                          setSheet(() => feedbackChoice = v);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: noteCtrl,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          hintText: 'Optional note',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: point.geohash.isEmpty
+                            ? null
+                            : () async {
+                                final ok = await sheetCtx.read<AppState>().submitSeverityFeedback(
+                                      geohash: point.geohash,
+                                      needType: point.needType,
+                                      feedback: feedbackChoice,
+                                      note: noteCtrl.text.isEmpty ? null : noteCtrl.text,
+                                    );
+                                if (!sheetCtx.mounted) return;
+                                Navigator.pop(ctx);
+                                ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      ok ? 'Feedback recorded' : 'Could not send feedback',
+                                    ),
+                                  ),
+                                );
+                              },
+                        icon: const Icon(Icons.send),
+                        label: const Text('Send feedback'),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        );
+      },
+    ).whenComplete(noteCtrl.dispose);
   }
 
   Future<void> _loadHeatmapData() async {
@@ -454,6 +609,11 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                     initialZoom: 5.0,
                     minZoom: 4.0,
                     maxZoom: 18.0,
+                    onTap: (_, point) => _onMapTapped(point),
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.all,
+                    ),
+                    applyPointerTranslucencyToLayers: true,
                   ),
                   children: [
                     // OpenStreetMap tiles
@@ -539,6 +699,10 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                             Text('SevaSetu Map', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: AppColors.primary)),
                             Row(
                               children: [
+                                IconButton(
+                                  icon: const Icon(Icons.ios_share, color: AppColors.primary),
+                                  onPressed: _shareSnapshot,
+                                ),
                                 IconButton(
                                   icon: const Icon(Icons.refresh, color: AppColors.primary),
                                   onPressed: _loadHeatmapData,
@@ -629,6 +793,21 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                             Text(
                               'Total: ${_heatmapData.length}',
                               style: theme.textTheme.labelMedium?.copyWith(color: AppColors.primary),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Auto refresh (5 min)',
+                                    style: theme.textTheme.labelSmall,
+                                  ),
+                                ),
+                                Switch.adaptive(
+                                  value: _autoRefreshEnabled,
+                                  onChanged: (v) => setState(() => _autoRefreshEnabled = v),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 12),
                             ..._regions.map((region) {

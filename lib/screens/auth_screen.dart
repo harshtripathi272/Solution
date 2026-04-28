@@ -14,6 +14,12 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+  static const List<UserRole> _signUpRoleOrder = [
+    UserRole.volunteer,
+    UserRole.coordinator,
+    UserRole.ngoWorker,
+  ];
+
   bool _isLogin = true;
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -44,7 +50,6 @@ class _AuthScreenState extends State<AuthScreen> {
       } else {
         if (mounted) context.read<AppState>().setRequestedRole(_selectedRole);
         await _authService.signUpWithEmailPassword(email, password);
-        // Note: Backend handles creating the actual profile document upon first sign-in
       }
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = e.message ?? "Authentication failed");
@@ -64,11 +69,14 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
+      if (!_isLogin && mounted) {
+        context.read<AppState>().setRequestedRole(_selectedRole);
+      }
       await _authService.signInWithGoogle();
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = e.message ?? "Google Sign-In failed");
     } catch (e) {
-      // Ignored if user cancels
+      // User cancelled
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -81,170 +89,194 @@ class _AuthScreenState extends State<AuthScreen> {
     super.dispose();
   }
 
+  String _roleLabel(UserRole r) => switch (r) {
+        UserRole.volunteer => 'Volunteer',
+        UserRole.coordinator => 'Coordinator',
+        UserRole.ngoWorker => 'NGO field worker',
+      };
+
   @override
   Widget build(BuildContext context) {
-    // Premium styling matching AppColors and AppTheme
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final theme = Theme.of(context);
+
     return Scaffold(
       backgroundColor: AppColors.surface,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 48.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header Icon
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryContainer,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.energy_savings_leaf,
-                    color: AppColors.onPrimary,
-                    size: 64,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-              
-              Text(
-                _isLogin ? "Welcome Back" : "Join SevaSetu",
-                style: Theme.of(context).textTheme.headlineLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _isLogin 
-                    ? "Log in to coordinate and impact lives."
-                    : "Create an account to start volunteering.",
-                style: Theme.of(context).textTheme.bodyLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 48),
-
-              if (_errorMessage != null)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 24),
-                  decoration: BoxDecoration(
-                    color: AppColors.error.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.error.withValues(alpha: 0.5)),
-                  ),
-                  child: Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(24, 36, 24, 28 + bottomInset),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight - MediaQuery.of(context).padding.vertical),
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Icon(Icons.error_outline, color: AppColors.error),
-                      const SizedBox(width: 12),
-                      Expanded(
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryContainer,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.energy_savings_leaf,
+                            color: AppColors.onPrimary,
+                            size: 64,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      Text(
+                        _isLogin ? "Welcome back" : "Join SevaSetu",
+                        style: theme.textTheme.headlineLarge,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _isLogin
+                            ? "Log in to coordinate and impact lives."
+                            : "Create one account — pick how you participate.",
+                        style: theme.textTheme.bodyLarge,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 40),
+                      if (_errorMessage != null)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(bottom: 20),
+                          decoration: BoxDecoration(
+                            color: AppColors.error.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.error.withValues(alpha: 0.5)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline, color: AppColors.error),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: const TextStyle(color: AppColors.error),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      _buildTextField(
+                        controller: _emailController,
+                        label: "Work email",
+                        icon: Icons.email_outlined,
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        controller: _passwordController,
+                        label: "Password",
+                        icon: Icons.lock_outline,
+                        isPassword: true,
+                      ),
+                      if (!_isLogin) ...[
+                        const SizedBox(height: 24),
+                        Text(
+                          'Sign up as',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: AppColors.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<UserRole>(
+                          value: _selectedRole,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: AppColors.surfaceContainerLow,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          ),
+                          icon: const Icon(Icons.expand_more, color: AppColors.primary),
+                          items: _signUpRoleOrder.map((r) {
+                            return DropdownMenuItem<UserRole>(
+                              value: r,
+                              child: Text(_roleLabel(r)),
+                            );
+                          }).toList(),
+                          onChanged: _isLoading
+                              ? null
+                              : (v) {
+                                  if (v != null) setState(() => _selectedRole = v);
+                                },
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'You can change this later with your organisation.',
+                          style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant),
+                        ),
+                      ],
+                      const SizedBox(height: 28),
+                      FilledButton(
+                        onPressed: _isLoading ? null : _submit,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.onPrimary,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 24,
+                                width: 24,
+                                child: CircularProgressIndicator(
+                                  color: AppColors.onPrimary,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(_isLogin ? "Log in" : "Create account"),
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: _isLoading ? null : _submitGoogle,
+                        icon: const Icon(Icons.g_mobiledata, size: 28),
+                        label: const Text("Continue with Google"),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.onSurface,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          side: const BorderSide(color: AppColors.outlineVariant),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          textStyle: theme.textTheme.labelLarge,
+                        ),
+                      ),
+                      const Spacer(),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () {
+                                setState(() {
+                                  _isLogin = !_isLogin;
+                                  _errorMessage = null;
+                                });
+                              },
                         child: Text(
-                          _errorMessage!,
-                          style: const TextStyle(color: AppColors.error),
+                          _isLogin ? "New here? Create an account" : "Already registered? Log in",
+                          style: const TextStyle(color: AppColors.tertiary),
                         ),
                       ),
                     ],
                   ),
                 ),
-
-              // Email Field
-              _buildTextField(
-                controller: _emailController,
-                label: "Email Address",
-                icon: Icons.email_outlined,
-                keyboardType: TextInputType.emailAddress,
               ),
-              const SizedBox(height: 16),
-              
-              // Password Field
-              _buildTextField(
-                controller: _passwordController,
-                label: "Password",
-                icon: Icons.lock_outline,
-                isPassword: true,
-              ),
-              const SizedBox(height: 24),
-              
-              if (!_isLogin) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  decoration: AppDecorations.contentBlock,
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<UserRole>(
-                      value: _selectedRole,
-                      isExpanded: true,
-                      icon: const Icon(Icons.arrow_drop_down, color: AppColors.primary),
-                      items: const [
-                        DropdownMenuItem(value: UserRole.volunteer, child: Text("Sign up as Volunteer")),
-                        DropdownMenuItem(value: UserRole.ngoWorker, child: Text("Sign up as NGO Worker")),
-                        DropdownMenuItem(value: UserRole.coordinator, child: Text("Sign up as Coordinator")),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) setState(() => _selectedRole = val);
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 32),
-              ],
-
-              // Action Button
-              ElevatedButton(
-                onPressed: _isLoading ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          color: AppColors.onPrimary,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : Text(_isLogin ? "Log In" : "Sign Up"),
-              ),
-              const SizedBox(height: 24),
-
-              // Google Sign In Button
-              OutlinedButton.icon(
-                onPressed: _isLoading ? null : _submitGoogle,
-                icon: const Icon(Icons.g_mobiledata, size: 28),
-                label: const Text("Continue with Google"),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.onSurface,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  side: const BorderSide(color: AppColors.outlineVariant),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  textStyle: Theme.of(context).textTheme.labelLarge,
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Toggle Auth Mode
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _isLogin = !_isLogin;
-                    _errorMessage = null;
-                  });
-                },
-                child: Text(
-                  _isLogin 
-                      ? "Don't have an account? Sign Up" 
-                      : "Already have an account? Log In",
-                  style: TextStyle(color: AppColors.tertiary),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

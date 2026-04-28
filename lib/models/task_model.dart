@@ -22,6 +22,8 @@ class VolunteerTask {
   final DateTime createdAt;
   final DateTime? completedAt;
   final double? matchScore;
+  /// Distance from search anchor in km (when API provides it).
+  final double? distanceKm;
 
   VolunteerTask({
     String? id,
@@ -43,6 +45,7 @@ class VolunteerTask {
     DateTime? createdAt,
     this.completedAt,
     this.matchScore,
+    this.distanceKm,
   }) : id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now();
 
@@ -51,6 +54,7 @@ class VolunteerTask {
     String? assignedTo,
     DateTime? completedAt,
     double? matchScore,
+    double? distanceKm,
   }) {
     return VolunteerTask(
       id: id,
@@ -72,6 +76,7 @@ class VolunteerTask {
       createdAt: createdAt,
       completedAt: completedAt ?? this.completedAt,
       matchScore: matchScore ?? this.matchScore,
+      distanceKm: distanceKm ?? this.distanceKm,
     );
   }
 
@@ -95,6 +100,7 @@ class VolunteerTask {
     'createdAt': createdAt.toIso8601String(),
     'completedAt': completedAt?.toIso8601String(),
     'matchScore': matchScore,
+    'distanceKm': distanceKm,
   };
 
   factory VolunteerTask.fromMap(Map<String, dynamic> map) => VolunteerTask(
@@ -145,5 +151,8 @@ class VolunteerTask {
                     '')
                 .toString(),
           ),
+    distanceKm: map['distance_km'] != null || map['distanceKm'] != null
+        ? ((map['distance_km'] ?? map['distanceKm']) as num?)?.toDouble()
+        : null,
   );
 }
