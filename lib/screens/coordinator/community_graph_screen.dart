@@ -1172,7 +1172,7 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
     if (value.length <= 14) {
       return value;
     }
-    return value.substring(0, 11).trimRight() + '…';
+    return '${value.substring(0, 11).trimRight()}…';
   }
 }
 

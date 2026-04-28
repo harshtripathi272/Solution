@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+
 class AppConstants {
   static const String appName = 'SevaSetu';
   static const String appTagline = 'Bridging Service, Building Impact';
