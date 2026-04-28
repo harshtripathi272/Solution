@@ -46,6 +46,46 @@ class AppState extends ChangeNotifier {
     return const [];
   }
 
+  /// Maps `/api/v1/auth/register` JSON into app state. Trust is displayed as 4.0 until a dedicated trust API exists.
+  void _applyRegisterPayload(Map<String, dynamic> data, User firebaseUser) {
+    UserRole mappedRole = UserRole.volunteer;
+    if (data['role'] == 'coordinator') mappedRole = UserRole.coordinator;
+    if (data['role'] == 'ngo_worker') mappedRole = UserRole.ngoWorker;
+
+    _currentRole = mappedRole;
+    const trustDisplay = 4.0;
+    _currentUser = AppUser(
+      id: data['uid']?.toString() ?? firebaseUser.uid,
+      name: (data['name'] ?? firebaseUser.displayName ?? 'User').toString(),
+      email: (data['email'] ?? firebaseUser.email ?? '').toString(),
+      role: mappedRole,
+      ngoId: data['organization_id']?.toString(),
+      phone: data['phone']?.toString(),
+      skills: _parseSkills(data['skills']),
+      location: data['location']?.toString(),
+      isAvailable: data['is_available'] ?? true,
+      createdAt: _parseBackendDate(data['created_at']),
+      trustScore: trustDisplay,
+    );
+  }
+
+  /// Re-fetch profile from backend after local edits (same contract as sign-in).
+  Future<bool> refreshProfileFromServer() async {
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    if (firebaseUser == null || _apiClient == null) return false;
+    try {
+      final response = await _apiClient!.post('/api/v1/auth/register', {});
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      _applyRegisterPayload(data, firebaseUser);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('[AppState] refreshProfileFromServer: $e');
+      return false;
+    }
+  }
+
   Future<void> refreshHistoricalTasks({
     double? latitude,
     double? longitude,
@@ -218,26 +258,9 @@ class AppState extends ChangeNotifier {
       final response = await _apiClient!.post("/api/v1/auth/register", payload);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        // Map backend role enum to local Flutter enum
-        UserRole mappedRole = UserRole.volunteer;
-        if (data['role'] == 'coordinator') mappedRole = UserRole.coordinator;
-        if (data['role'] == 'ngo_worker') mappedRole = UserRole.ngoWorker;
-
-        _currentRole = mappedRole;
-        _currentUser = AppUser(
-          id: data['uid'] ?? firebaseUser.uid,
-          name: data['name'] ?? firebaseUser.displayName ?? 'User',
-          email: data['email'] ?? firebaseUser.email ?? '',
-          role: mappedRole,
-          ngoId: data['organization_id'],
-          phone: data['phone'],
-          skills: _parseSkills(data['skills']),
-          location: data['location'],
-          isAvailable: data['is_available'] ?? true,
-          createdAt: _parseBackendDate(data['created_at']),
-        );
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        _applyRegisterPayload(data, firebaseUser);
+        final mappedRole = _currentRole;
         if (mappedRole == UserRole.volunteer && _locationService != null) {
           try {
             final pos = await _locationService!.getCurrentPosition();

@@ -76,8 +76,17 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
       );
 
       await ProfileService.updateVolunteerProfile(user.id, updatedUser);
+      await appState.refreshProfileFromServer();
 
       if (mounted) {
+        final u = appState.currentUser;
+        if (u != null) {
+          _nameController.text = u.name;
+          _phoneController.text = u.phone ?? '';
+          _locationController.text = u.location ?? '';
+          _editingSkills = List.from(u.skills);
+          _isAvailable = u.isAvailable;
+        }
         setState(() => _isEditing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile updated successfully!')),

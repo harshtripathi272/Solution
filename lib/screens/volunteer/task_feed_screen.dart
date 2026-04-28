@@ -126,11 +126,65 @@ class _VolunteerTaskFeedState extends State<VolunteerTaskFeed> {
           ),
         ),
 
-        // List area
         Expanded(
-          child: currentList.isEmpty
-              ? _buildEmptyState(theme)
-              : ListView.builder(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (state.tasks.isEmpty && state.backendError != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            state.backendError!,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (state.tasks.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: ExpansionTile(
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                    collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    title: Text('Why are there no tasks?', style: theme.textTheme.titleSmall),
+                    subtitle: Text(
+                      'Tasks come from the volunteer-area pipeline (API + location). Tap for details.',
+                      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant),
+                    ),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Text(
+                          'Tasks appear when the backend returns volunteer_area_tasks within your radius, '
+                          'and your session has a location anchor (one-time GPS at sign-in or ongoing sharing). '
+                          'Matched also filters by skills when tasks specify required skills. '
+                          'Empty often means pipeline or geography — not necessarily a defect.',
+                          style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: currentList.isEmpty
+                    ? _buildEmptyState(theme)
+                    : ListView.builder(
                   padding: const EdgeInsets.all(24),
                   itemCount: currentList.length,
                   itemBuilder: (context, index) {
@@ -181,6 +235,9 @@ class _VolunteerTaskFeedState extends State<VolunteerTaskFeed> {
                     );
                   },
                 ),
+              ),
+            ],
+          ),
         ),
       ],
     );

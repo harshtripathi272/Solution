@@ -8,6 +8,9 @@ import '../../widgets/task_card.dart';
 import '../../widgets/crisis_alert_card.dart';
 import '../../services/community_graph_api_service.dart';
 import '../../models/community_graph_models.dart';
+import 'pipeline_event_detail_screen.dart';
+import 'community_detail_screen.dart';
+import 'volunteer_area_task_detail_screen.dart';
 
 class CoordinatorDashboard extends StatefulWidget {
   const CoordinatorDashboard({super.key});
@@ -191,7 +194,18 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
                 ...(_recentNeeds!['events'] as List).take(5).map((event) {
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                    child: _buildEventCard(context, theme, event),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                PipelineEventDetailScreen(event: Map<String, dynamic>.from(event as Map)),
+                          ),
+                        );
+                      },
+                      child: _buildEventCard(context, theme, event as Map<String, dynamic>),
+                    ),
                   );
                 }),
                 const SizedBox(height: 32),
@@ -225,9 +239,20 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: state.tasks.take(5).length,
                   itemBuilder: (context, index) {
+                    final t = state.tasks[index];
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 16),
-                      child: TaskCard(task: state.tasks[index]),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => VolunteerAreaTaskDetailScreen(task: t),
+                            ),
+                          );
+                        },
+                        child: TaskCard(task: t),
+                      ),
                     );
                   },
                 ),
@@ -241,7 +266,16 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
   }
 
   Widget _buildCommunityRequirementCard(BuildContext context, ThemeData theme, CommunityProfile profile) {
-    return Container(
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => CommunityDetailScreen(profile: profile),
+          ),
+        );
+      },
+      child: Container(
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
@@ -296,6 +330,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
           ],
         ),
       ),
+    ),
     );
   }
 

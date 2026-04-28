@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../config/theme.dart';
 import '../../models/community_graph_models.dart';
 import '../../services/community_graph_api_service.dart';
+import 'community_detail_screen.dart';
 import 'heatmap_screen.dart';
 
 class CommunityGraphScreen extends StatefulWidget {
@@ -331,7 +332,7 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: AppDecorations.activeChip,
-                child: Text('$_timeWindowDays days', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.primary)),
+                child: Text('${_timeWindowDays.round()} days', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.primary)),
               ),
             ],
           ),
@@ -350,8 +351,8 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
               min: 30,
               max: 365,
               divisions: 11,
-              label: '${_timeWindowDays.toInt()} days',
-              onChanged: (value) => setState(() => _timeWindowDays = value),
+              label: '${_timeWindowDays.round()} days',
+              onChanged: (value) => setState(() => _timeWindowDays = value.roundToDouble()),
             ),
           ),
         ],
@@ -674,7 +675,14 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
             padding: const EdgeInsets.only(bottom: 14),
             child: InkWell(
               borderRadius: BorderRadius.circular(24),
-              onTap: () => setState(() => _selectedCommunityId = profile.id),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => CommunityDetailScreen(profile: profile),
+                  ),
+                );
+                setState(() => _selectedCommunityId = profile.id);
+              },
               child: AnimatedContainer(
                 duration: 250.ms,
                 decoration: BoxDecoration(
@@ -983,7 +991,10 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
-        return Stack(
+        final graph = SizedBox(
+          width: width,
+          height: height,
+          child: Stack(
           children: [
             Positioned.fill(
               child: CustomPaint(
@@ -1001,6 +1012,14 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
                   onTap: () {
                     if (node.kind == _GraphNodeKind.community) {
                       widget.onSelectCommunity(node.id);
+                      final raw = node.metadata;
+                      if (raw is CommunityProfile) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => CommunityDetailScreen(profile: raw),
+                          ),
+                        );
+                      }
                     }
                   },
                   child: AnimatedContainer(
@@ -1038,6 +1057,14 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
               );
             }),
           ],
+        ),
+        );
+
+        return InteractiveViewer(
+          minScale: 0.65,
+          maxScale: 3.2,
+          boundaryMargin: const EdgeInsets.all(120),
+          child: graph,
         );
       },
     );

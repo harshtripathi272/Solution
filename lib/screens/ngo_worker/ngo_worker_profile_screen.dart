@@ -73,8 +73,16 @@ class _NGOWorkerProfileScreenState extends State<NGOWorkerProfileScreen> {
       );
 
       await ProfileService.updateNGOWorkerProfile(user.id, updatedUser);
+      await appState.refreshProfileFromServer();
 
       if (mounted) {
+        final u = appState.currentUser;
+        if (u != null) {
+          _nameController.text = u.name;
+          _phoneController.text = u.phone ?? '';
+          _organizationController.text = u.ngoId ?? '';
+          _locationController.text = u.location ?? '';
+        }
         setState(() => _isEditing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile updated successfully!')),

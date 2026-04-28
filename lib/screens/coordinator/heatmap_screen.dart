@@ -610,6 +610,10 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                     minZoom: 4.0,
                     maxZoom: 18.0,
                     onTap: (_, point) => _onMapTapped(point),
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.all,
+                    ),
+                    applyPointerTranslucencyToLayers: true,
                   ),
                   children: [
                     // OpenStreetMap tiles
