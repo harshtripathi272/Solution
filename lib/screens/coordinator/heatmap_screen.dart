@@ -696,7 +696,34 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('SevaSetu Map', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: AppColors.primary)),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [AppColors.primary, Color(0xFF3B62F0)],
+                                    ),
+                                    borderRadius: AppRadius.mdR,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppColors.primary.withValues(alpha: 0.25),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(Icons.map_rounded, color: AppColors.onPrimary, size: 18),
+                                ),
+                                const SizedBox(width: AppSpacing.md),
+                                Text(
+                                  'Need heatmap',
+                                  style: theme.textTheme.titleLarge,
+                                ),
+                              ],
+                            ),
                             Row(
                               children: [
                                 IconButton(
@@ -756,13 +783,13 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Severity', style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 16),
-                            _legendItem('Extreme', Colors.red),
-                            _legendItem('Severe', Colors.orange),
-                            _legendItem('Moderate', Colors.yellow),
-                            _legendItem('Stressed', Colors.green),
-                            _legendItem('Minimal', Colors.blue),
+                            Text('Severity', style: theme.textTheme.titleSmall),
+                            const SizedBox(height: AppSpacing.md),
+                            _legendItem('Extreme', AppColors.urgencyCritical),
+                            _legendItem('Severe', AppColors.urgencyHigh),
+                            _legendItem('Moderate', AppColors.urgencyMedium),
+                            _legendItem('Stressed', AppColors.urgencyLow),
+                            _legendItem('Minimal', AppColors.info),
                           ],
                         ),
                       ),
@@ -788,13 +815,13 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Clusters', style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 12),
+                            Text('Clusters', style: theme.textTheme.titleSmall),
+                            const SizedBox(height: AppSpacing.sm),
                             Text(
-                              'Total: ${_heatmapData.length}',
-                              style: theme.textTheme.labelMedium?.copyWith(color: AppColors.primary),
+                              '${_heatmapData.length}',
+                              style: AppTypography.metric(size: 26, color: AppColors.primary),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: AppSpacing.sm),
                             Row(
                               children: [
                                 Expanded(
@@ -803,13 +830,16 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                                     style: theme.textTheme.labelSmall,
                                   ),
                                 ),
-                                Switch.adaptive(
-                                  value: _autoRefreshEnabled,
-                                  onChanged: (v) => setState(() => _autoRefreshEnabled = v),
+                                Transform.scale(
+                                  scale: 0.85,
+                                  child: Switch.adaptive(
+                                    value: _autoRefreshEnabled,
+                                    onChanged: (v) => setState(() => _autoRefreshEnabled = v),
+                                  ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: AppSpacing.sm),
                             ..._regions.map((region) {
                               final count = clusterCounts[region] ?? 0;
                               return Padding(

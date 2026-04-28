@@ -90,7 +90,7 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFfbf9f9), Color(0xFFf2efec), Color(0xFFeef4ef)],
+          colors: [AppColors.surface, AppColors.surfaceContainerLow, AppColors.surfaceContainer],
           stops: [0.0, 0.55, 1.0],
         ),
       ),
@@ -267,52 +267,74 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
     final gapCount = overview?.coverageGaps.length ?? 0;
 
     return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: AppDecorations.baseCard.copyWith(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF07112f), Color(0xFF10284d), Color(0xFF193a32)],
+          colors: [AppColors.primary, Color(0xFF3B62F0), AppColors.secondary],
           stops: [0.0, 0.55, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
+        borderRadius: AppRadius.xlR,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.22),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Community intelligence network', style: theme.textTheme.bodyLarge?.copyWith(color: Colors.white70)),
-          const SizedBox(height: 8),
-          Text('Constellation map, need matrix, and freshness trail',
-              style: theme.textTheme.displaySmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 16),
+          Text(
+            'Community intelligence network',
+            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.85)),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Constellation map',
+            style: theme.textTheme.headlineMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
           Wrap(
-            spacing: 12,
-            runSpacing: 12,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             children: [
-              _metricChip('Communities', '${visibleProfiles.length}', Colors.white),
-              _metricChip('Need signals', '$totalNeeds', Colors.white),
-              _metricChip('Coverage gaps', '$gapCount', Colors.white),
-              _metricChip('Stale communities', '$staleCount', Colors.white),
+              _metricChip('Communities', '${visibleProfiles.length}'),
+              _metricChip('Need signals', '$totalNeeds'),
+              _metricChip('Coverage gaps', '$gapCount'),
+              _metricChip('Stale', '$staleCount'),
             ],
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
+    ).animate().fadeIn(duration: AppMotion.standard).slideY(begin: 0.06, end: 0, curve: AppMotion.easeStandard);
   }
 
-  Widget _metricChip(String label, String value, Color color) {
+  Widget _metricChip(String label, String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: AppRadius.pillR,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w800)),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(color: Colors.white70)),
+          Text(
+            value,
+            style: AppTypography.metric(size: 16, color: Colors.white),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+          ),
         ],
       ),
     );

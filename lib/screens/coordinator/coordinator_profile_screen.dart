@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/user_model.dart';
@@ -25,7 +26,7 @@ class _CoordinatorProfileScreenState extends State<CoordinatorProfileScreen> {
     super.initState();
     final appState = context.read<AppState>();
     final user = appState.currentUser;
-    
+
     _nameController = TextEditingController(text: user?.name ?? '');
     _phoneController = TextEditingController(text: user?.phone ?? '');
     _locationController = TextEditingController(text: user?.location ?? '');
@@ -48,8 +49,8 @@ class _CoordinatorProfileScreenState extends State<CoordinatorProfileScreen> {
     try {
       final appState = context.read<AppState>();
       final user = appState.currentUser;
-      
-      if (user == null) throw Exception("User not loaded");
+
+      if (user == null) throw Exception('User not loaded');
 
       final updatedUser = AppUser(
         id: user.id,
@@ -80,14 +81,19 @@ class _CoordinatorProfileScreenState extends State<CoordinatorProfileScreen> {
         }
         setState(() => _isEditing = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated successfully!')),
+          SnackBar(
+            content: const Text('Profile updated.'),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: AppRadius.lgR),
+          ),
         );
       }
     } catch (e) {
       setState(() => _saveError = e.toString());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
         );
       }
     } finally {
@@ -102,155 +108,227 @@ class _CoordinatorProfileScreenState extends State<CoordinatorProfileScreen> {
     final theme = Theme.of(context);
 
     if (user == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Profile')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Profile'),
-        actions: [
-          if (!_isEditing)
-            TextButton(
-              onPressed: () => setState(() => _isEditing = true),
-              child: const Text('Edit'),
-            )
-          else
-            TextButton(
-              onPressed: _isSaving ? null : _saveChanges,
-              child: _isSaving ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ) : const Text('Save'),
+      backgroundColor: AppColors.surface,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xxl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTopBar(theme),
+              const SizedBox(height: AppSpacing.lg),
+              _buildIdentityCard(theme, user).animate().fadeIn(duration: AppMotion.standard).slideY(begin: 0.04, end: 0),
+              const SizedBox(height: AppSpacing.lg),
+              _buildStatsCard(theme, user, appState).animate(delay: 80.ms).fadeIn(duration: AppMotion.standard),
+              const SizedBox(height: AppSpacing.xl),
+              if (_isEditing) ...[
+                Text('Edit profile', style: theme.textTheme.titleLarge),
+                const SizedBox(height: AppSpacing.md),
+                _buildTextField(controller: _nameController, label: 'Full name', icon: Icons.person_rounded),
+                const SizedBox(height: AppSpacing.md),
+                _buildTextField(
+                  controller: _phoneController,
+                  label: 'Phone number',
+                  icon: Icons.phone_rounded,
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _buildTextField(
+                  controller: _locationController,
+                  label: 'Coordination area',
+                  icon: Icons.location_on_rounded,
+                ),
+              ] else ...[
+                Text('Contact information', style: theme.textTheme.titleLarge),
+                const SizedBox(height: AppSpacing.md),
+                _buildInfoTile(theme, 'Phone', user.phone ?? '—', Icons.phone_rounded),
+                const SizedBox(height: AppSpacing.sm),
+                _buildInfoTile(theme, 'Coordination area', user.location ?? '—', Icons.location_on_rounded),
+              ],
+              if (_saveError != null) ...[
+                const SizedBox(height: AppSpacing.lg),
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: AppColors.errorContainer,
+                    borderRadius: AppRadius.lgR,
+                    border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    'Error: $_saveError',
+                    style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onErrorContainer),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────── pieces
+  Widget _buildTopBar(ThemeData theme) {
+    return Row(
+      children: [
+        Text('My profile', style: theme.textTheme.headlineLarge),
+        const Spacer(),
+        if (!_isEditing)
+          FilledButton.tonalIcon(
+            onPressed: () => setState(() => _isEditing = true),
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: const Text('Edit'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryContainer,
+              foregroundColor: AppColors.onPrimaryContainer,
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
             ),
+          )
+        else
+          FilledButton.icon(
+            onPressed: _isSaving ? null : _saveChanges,
+            icon: _isSaving
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary))
+                : const Icon(Icons.check_rounded, size: 18),
+            label: Text(_isSaving ? 'Saving' : 'Save'),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildIdentityCard(ThemeData theme, AppUser user) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppColors.secondary, Color(0xFF14A89A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: AppRadius.xlR,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.secondary.withValues(alpha: 0.22),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Profile Card
-            Container(
-              padding: const EdgeInsets.all(32),
-              decoration: AppDecorations.baseCard,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundColor: AppColors.primary,
-                        child: Text(
-                          user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.onPrimary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 24),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(user.name, style: theme.textTheme.headlineSmall),
-                            const SizedBox(height: 8),
-                            Text(user.email, style: theme.textTheme.bodyMedium),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Text(
-                                'Coordinator',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  // Stats
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildStatTile('Tasks', '${appState.tasks.length}'),
-                        _buildStatTile('Reports', '${appState.reportCount}'),
-                        _buildStatTile('Trust', '${user.trustScore.toStringAsFixed(1)}/5'),
-                      ],
-                    ),
-                ],
+      child: Row(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: AppRadius.lgR,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
+            ),
+            child: Center(
+              child: Text(
+                user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
+                style: AppTypography.metric(size: 30, color: Colors.white),
               ),
             ),
-            const SizedBox(height: 32),
-
-            if (_isEditing) ...[
-              Text('Edit Profile', style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 24),
-              
-              _buildTextField(
-                controller: _nameController,
-                label: 'Full Name',
-                icon: Icons.person,
-              ),
-              const SizedBox(height: 16),
-              
-              _buildTextField(
-                controller: _phoneController,
-                label: 'Phone Number',
-                icon: Icons.phone,
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 16),
-              
-              _buildTextField(
-                controller: _locationController,
-                label: 'Coordination Area/Location',
-                icon: Icons.location_on,
-              ),
-              const SizedBox(height: 32),
-            ] else ...[
-              // View Mode
-              Text('Contact Information', style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 16),
-              
-              _buildInfoTile('Phone', user.phone ?? 'Not set'),
-              const SizedBox(height: 12),
-              
-              _buildInfoTile('Location', user.location ?? 'Not set'),
-            ],
-
-            if (_saveError != null) ...[
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.error.withValues(alpha: 0.5)),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.name.isEmpty ? 'Coordinator' : user.name,
+                  style: theme.textTheme.titleLarge?.copyWith(color: Colors.white),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                child: Text(
-                  'Error: $_saveError',
-                  style: const TextStyle(color: AppColors.error),
+                const SizedBox(height: 2),
+                Text(
+                  user.email,
+                  style: theme.textTheme.bodySmall?.copyWith(color: Colors.white.withValues(alpha: 0.85)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
-          ],
-        ),
+                const SizedBox(height: AppSpacing.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: AppRadius.pillR,
+                  ),
+                  child: Text(
+                    'Coordinator',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsCard(ThemeData theme, AppUser user, AppState appState) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: AppDecorations.baseCard,
+      child: Row(
+        children: [
+          Expanded(child: _statTile(theme, 'Tasks', '${appState.tasks.length}', AppColors.primary)),
+          Container(width: 1, height: 36, color: AppColors.outlineVariant.withValues(alpha: 0.5)),
+          Expanded(child: _statTile(theme, 'Reports', '${appState.reportCount}', AppColors.secondary)),
+          Container(width: 1, height: 36, color: AppColors.outlineVariant.withValues(alpha: 0.5)),
+          Expanded(child: _statTile(theme, 'Trust', '${user.trustScore.toStringAsFixed(1)}/5', AppColors.tertiary)),
+        ],
+      ),
+    );
+  }
+
+  Widget _statTile(ThemeData theme, String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(value, style: AppTypography.metric(size: 22, color: color)),
+        const SizedBox(height: 2),
+        Text(label, style: theme.textTheme.labelSmall, textAlign: TextAlign.center),
+      ],
+    );
+  }
+
+  Widget _buildInfoTile(ThemeData theme, String label, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: AppDecorations.cardSubtle,
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.primaryContainer,
+              borderRadius: AppRadius.mdR,
+            ),
+            child: Icon(icon, color: AppColors.primary, size: 20),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: theme.textTheme.labelSmall),
+                const SizedBox(height: 2),
+                Text(value, style: theme.textTheme.titleSmall),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -264,39 +342,7 @@ class _CoordinatorProfileScreenState extends State<CoordinatorProfileScreen> {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      ),
-    );
-  }
-
-  Widget _buildInfoTile(String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: AppDecorations.contentBlock,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(height: 4),
-          Text(value, style: Theme.of(context).textTheme.bodyLarge),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatTile(String label, String value) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(value, style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 4),
-          Text(label, style: Theme.of(context).textTheme.labelMedium),
-        ],
-      ),
+      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
     );
   }
 }

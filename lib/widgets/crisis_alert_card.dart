@@ -12,50 +12,107 @@ class CrisisAlertCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final sc = _sevCol(alert.severity);
     final theme = Theme.of(context);
-    
+
     return Container(
       width: 320,
-      padding: const EdgeInsets.all(24),
-      decoration: AppDecorations.baseCard,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: sc.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
-            child: Icon(Icons.warning_rounded, color: sc, size: 24),
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLowest,
+        borderRadius: AppRadius.xlR,
+        boxShadow: AppElevation.soft,
+        border: Border.all(color: sc.withValues(alpha: 0.18), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [sc.withValues(alpha: 0.18), sc.withValues(alpha: 0.08)],
+                  ),
+                  borderRadius: AppRadius.lgR,
+                ),
+                child: Icon(Icons.warning_rounded, color: sc, size: 22),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      alert.severity.name.toUpperCase(),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: sc,
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      alert.affectedArea,
+                      style: theme.textTheme.titleMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(alert.severity.name.toUpperCase(),
-                style: theme.textTheme.labelLarge?.copyWith(color: sc, letterSpacing: 1.2)),
-            const SizedBox(height: 4),
-            Text(alert.affectedArea, style: theme.textTheme.titleLarge),
-          ])),
-        ]),
-        const SizedBox(height: 20),
-        Text(alert.prediction, maxLines: 3, overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyLarge?.copyWith(height: 1.5)),
-        const Spacer(),
-        Row(children: [
-          Icon(Icons.schedule, size: 16, color: AppColors.outlineVariant),
-          const SizedBox(width: 8),
-          Text('Predicted: ${DateFormat('MMM dd').format(alert.predictedDate)}',
-              style: theme.textTheme.bodyMedium),
+          const SizedBox(height: AppSpacing.lg),
+          Text(
+            alert.prediction,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+          ),
           const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(color: AppColors.surfaceContainerLow, borderRadius: BorderRadius.circular(8)),
-            child: Text('AI Forecast', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.onSurfaceVariant)),
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: [
+              Icon(Icons.schedule_rounded, size: 14, color: AppColors.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text(
+                DateFormat('MMM dd').format(alert.predictedDate),
+                style: theme.textTheme.labelMedium,
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryContainer,
+                  borderRadius: AppRadius.pillR,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.auto_awesome_rounded, size: 12, color: AppColors.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      'AI Forecast',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: AppColors.onPrimaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ]),
-      ]),
+        ],
+      ),
     );
   }
 
   Color _sevCol(AlertSeverity s) => switch (s) {
-    AlertSeverity.critical => AppColors.urgencyCritical,
-    AlertSeverity.high => AppColors.urgencyHigh,
-    AlertSeverity.moderate => AppColors.urgencyMedium,
-    AlertSeverity.low => AppColors.urgencyLow,
-  };
+        AlertSeverity.critical => AppColors.urgencyCritical,
+        AlertSeverity.high => AppColors.urgencyHigh,
+        AlertSeverity.moderate => AppColors.urgencyMedium,
+        AlertSeverity.low => AppColors.urgencyLow,
+      };
 }

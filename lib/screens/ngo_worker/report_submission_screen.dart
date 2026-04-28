@@ -215,41 +215,38 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
     if (_descCtrl.text.isNotEmpty) currentStep = 3;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xxl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Stepped Progress Indicator
           Row(
             children: List.generate(3, (index) {
               final step = index + 1;
               final isActive = step <= currentStep;
               return Expanded(
                 child: AnimatedContainer(
-                  duration: 300.ms,
-                  curve: Curves.easeOutCirc,
-                  margin: EdgeInsets.only(right: index < 2 ? 8 : 0),
-                  height: 6,
+                  duration: AppMotion.standard,
+                  curve: AppMotion.easeStandard,
+                  margin: EdgeInsets.only(right: index < 2 ? AppSpacing.sm : 0),
+                  height: 5,
                   decoration: BoxDecoration(
                     color: isActive ? AppColors.primary : AppColors.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(3),
+                    borderRadius: AppRadius.pillR,
                   ),
                 ),
               );
             }),
-          ).animate().fadeIn().slideY(begin: -0.5),
-          const SizedBox(height: 32),
-
-          Text('Report a Need', style: theme.textTheme.displayMedium)
-              .animate().fadeIn().slideX(begin: -0.1),
-          const SizedBox(height: 12),
-          Text('Provide context so we can mobilize the right network.', style: theme.textTheme.bodyLarge)
-              .animate().fadeIn(delay: 50.ms).slideX(begin: -0.1),
-          const SizedBox(height: 32),
-          
-          Text('Capture Source', style: theme.textTheme.headlineSmall)
-              .animate().fadeIn(delay: 100.ms),
-          const SizedBox(height: 16),
+          ).animate().fadeIn(duration: AppMotion.standard),
+          const SizedBox(height: AppSpacing.xl),
+          Text('Report a need', style: theme.textTheme.headlineLarge)
+              .animate().fadeIn(duration: AppMotion.standard).slideY(begin: 0.04, end: 0),
+          const SizedBox(height: 6),
+          Text('Provide context so we can mobilize the right network.', style: theme.textTheme.bodyMedium)
+              .animate(delay: 50.ms).fadeIn(duration: AppMotion.standard),
+          const SizedBox(height: AppSpacing.xl),
+          Text('Capture source', style: theme.textTheme.titleLarge)
+              .animate(delay: 100.ms).fadeIn(duration: AppMotion.standard),
+          const SizedBox(height: AppSpacing.md),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -275,37 +272,27 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
               ).animate().fadeIn(delay: 250.ms).scaleXY(begin: 0.9),
             ],
           ),
-          const SizedBox(height: 48),
-          
-          Text('Details', style: theme.textTheme.headlineSmall)
-              .animate().fadeIn(delay: 300.ms),
-          const SizedBox(height: 16),
-          
-          // Organic form fields
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: AppDecorations.ambientShadow,
+          const SizedBox(height: AppSpacing.xxl),
+          Text('Details', style: theme.textTheme.titleLarge)
+              .animate(delay: 300.ms).fadeIn(duration: AppMotion.standard),
+          const SizedBox(height: AppSpacing.md),
+          DropdownButtonFormField<String>(
+            initialValue: _needType,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Need type',
+              prefixIcon: Icon(Icons.category_rounded),
             ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _needType,
-                isExpanded: true,
-                dropdownColor: AppColors.surfaceContainerLowest,
-                borderRadius: BorderRadius.circular(24),
-                style: theme.textTheme.labelLarge,
-                items: AppConstants.needTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                onChanged: (v) => setState(() => _needType = v!),
-              ),
-            ),
-          ).animate().fadeIn(delay: 350.ms).slideY(begin: 0.1),
-          const SizedBox(height: 24),
-          
+            icon: const Icon(Icons.expand_more_rounded, color: AppColors.primary),
+            items: AppConstants.needTypes
+                .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                .toList(),
+            onChanged: (v) => v == null ? null : setState(() => _needType = v),
+          ).animate(delay: 350.ms).fadeIn(duration: AppMotion.standard).slideY(begin: 0.04, end: 0),
+          const SizedBox(height: AppSpacing.lg),
           Text('Urgency', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.onSurface))
-              .animate().fadeIn(delay: 400.ms),
-          const SizedBox(height: 12),
+              .animate(delay: 400.ms).fadeIn(duration: AppMotion.standard),
+          const SizedBox(height: AppSpacing.sm),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -323,77 +310,60 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
                 }
 
                 return Padding(
-                  padding: const EdgeInsets.only(right: 12),
+                  padding: const EdgeInsets.only(right: AppSpacing.sm),
                   child: GestureDetector(
                     onTap: () => setState(() => _urgency = u),
                     child: AnimatedContainer(
-                      duration: 300.ms,
-                      curve: Curves.easeOutCirc,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      decoration: active 
-                          ? AppDecorations.activeChip.copyWith(color: activeColor)
-                          : AppDecorations.inactiveChip,
+                      duration: AppMotion.standard,
+                      curve: AppMotion.easeStandard,
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: active ? activeColor : AppColors.surfaceContainerLow,
+                        borderRadius: AppRadius.pillR,
+                        border: Border.all(
+                          color: active ? activeColor : AppColors.outlineVariant.withValues(alpha: 0.4),
+                          width: 1,
+                        ),
+                      ),
                       child: Text(
-                        u, 
-                        style: theme.textTheme.labelLarge?.copyWith(
+                        u,
+                        style: theme.textTheme.labelMedium?.copyWith(
                           color: active ? Colors.white : AppColors.onSurface,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
                   ),
-                ).animate().fadeIn(delay: (450 + idx * 50).ms).scaleXY(begin: 0.8, curve: Curves.easeOutBack);
+                ).animate(delay: (450 + idx * 50).ms).fadeIn(duration: AppMotion.standard);
               }).toList(),
             ),
           ),
           
-          const SizedBox(height: 24),
-          
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: AppDecorations.ambientShadow,
+          const SizedBox(height: AppSpacing.lg),
+          TextField(
+            controller: _descCtrl,
+            focusNode: _descFocus,
+            maxLines: 5,
+            enabled: !_isSubmitting,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              hintText: 'Describe the situation in detail...',
+              alignLabelWithHint: true,
             ),
-            child: TextField(
-              controller: _descCtrl,
-              focusNode: _descFocus,
-              maxLines: 5,
-              enabled: !_isSubmitting,
-              onChanged: (_) => setState(() {}), // To trigger step updates
-              decoration: InputDecoration.collapsed(
-                hintText: 'Describe the situation in detail...',
-                hintStyle: theme.textTheme.bodyLarge?.copyWith(color: AppColors.onSurfaceVariant.withValues(alpha: 0.5)),
-              ),
-            ),
-          ).animate().fadeIn(delay: 550.ms).slideY(begin: 0.1),
-          
-          const SizedBox(height: 48),
-          
+          ).animate(delay: 550.ms).fadeIn(duration: AppMotion.standard).slideY(begin: 0.04, end: 0),
+          const SizedBox(height: AppSpacing.xl),
           SizedBox(
             width: double.infinity,
-            child: GestureDetector(
-              onTapDown: (_) {
-                if (_isSubmitting) return;
-                // Add tiny satisfying scale on touch down if we wanted, but ElevatedButton natively splashes
-              },
-              child: ElevatedButton(
-                onPressed: _isSubmitting ? null : _handleSubmission,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 56),
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 8,
-                  shadowColor: AppColors.primary.withValues(alpha: 0.5),
-                ),
-                child: _isSubmitting 
-                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Submit Report', style: TextStyle(fontSize: 16)),
-              ),
-            ).animate(target: _descCtrl.text.isNotEmpty ? 1 : 0).scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1), duration: 200.ms),
-          ).animate().fadeIn(delay: 600.ms).slideY(begin: 0.2),
-          const SizedBox(height: 48),
+            height: 56,
+            child: FilledButton.icon(
+              onPressed: _isSubmitting ? null : _handleSubmission,
+              icon: _isSubmitting
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary))
+                  : const Icon(Icons.send_rounded, size: 18),
+              label: Text(_isSubmitting ? 'Submitting' : 'Submit report'),
+            ),
+          ).animate(delay: 600.ms).fadeIn(duration: AppMotion.standard).slideY(begin: 0.04, end: 0),
+          const SizedBox(height: AppSpacing.xl),
 
           // Past reports
           Builder(builder: (ctx) {
@@ -404,25 +374,25 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
               children: [
                 const Divider(),
                 const SizedBox(height: 24),
-                Text('Recent Submissions', style: theme.textTheme.headlineSmall)
-                    .animate().fadeIn(delay: 400.ms),
-                const SizedBox(height: 16),
+                Text('Recent submissions', style: theme.textTheme.titleLarge)
+                    .animate(delay: 400.ms).fadeIn(duration: AppMotion.standard),
+                const SizedBox(height: AppSpacing.md),
                 ...reports.take(5).map((report) => Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: AppDecorations.contentBlock,
+                  margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: AppDecorations.cardSubtle,
                   child: Row(
                     children: [
                       Container(
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: _urgencyColor(report.urgency).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
+                          color: _urgencyColor(report.urgency).withValues(alpha: 0.12),
+                          borderRadius: AppRadius.mdR,
                         ),
-                        child: Icon(Icons.description, color: _urgencyColor(report.urgency), size: 20),
+                        child: Icon(Icons.description_rounded, color: _urgencyColor(report.urgency), size: 20),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -430,21 +400,27 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
                             Text(report.needType, style: theme.textTheme.titleSmall),
                             const SizedBox(height: 2),
                             Text(report.description, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant)),
+                                style: theme.textTheme.bodySmall),
                           ],
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 4),
                         decoration: BoxDecoration(
-                          color: _urgencyColor(report.urgency).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
+                          color: _urgencyColor(report.urgency).withValues(alpha: 0.12),
+                          borderRadius: AppRadius.pillR,
                         ),
-                        child: Text(report.urgency, style: theme.textTheme.labelSmall?.copyWith(color: _urgencyColor(report.urgency))),
+                        child: Text(
+                          report.urgency,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: _urgencyColor(report.urgency),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                ).animate().fadeIn()),
+                ).animate().fadeIn(duration: AppMotion.standard)),
               ],
             );
           }),
@@ -462,39 +438,43 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
 
   Widget _sourceCard(IconData icon, String label, bool selected, VoidCallback onTap) {
     final theme = Theme.of(context);
-    final bgColor = selected ? AppColors.primary : AppColors.surfaceContainerHigh;
+    final bgColor = selected ? AppColors.primary : AppColors.surfaceContainerLowest;
     final contentColor = selected ? Colors.white : AppColors.onSurface;
+    final iconColor = selected ? Colors.white : AppColors.primary;
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: (MediaQuery.of(context).size.width - 48 - 32) / 3,
-        padding: const EdgeInsets.symmetric(vertical: 24),
+      child: AnimatedContainer(
+        duration: AppMotion.standard,
+        curve: AppMotion.easeStandard,
+        width: (MediaQuery.of(context).size.width - AppSpacing.xl * 2 - AppSpacing.sm * 2) / 3,
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: bgColor.withValues(alpha: 0.3),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ]
-              : [],
+          borderRadius: AppRadius.lgR,
+          boxShadow: selected ? AppElevation.floating : AppElevation.soft,
           border: Border.all(
-            color: selected ? Colors.white.withValues(alpha: 0.2) : Colors.transparent,
+            color: selected ? Colors.transparent : AppColors.outlineVariant.withValues(alpha: 0.4),
+            width: 1,
           ),
         ),
         child: Column(
           children: [
-            Icon(icon, color: contentColor, size: 32),
-            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: selected ? Colors.white.withValues(alpha: 0.18) : AppColors.primaryContainer,
+                borderRadius: AppRadius.mdR,
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               label,
-              style: theme.textTheme.bodyMedium?.copyWith(
+              style: theme.textTheme.labelMedium?.copyWith(
                 color: contentColor,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -506,35 +486,61 @@ class _ReportSubmissionScreenState extends State<ReportSubmissionScreen> {
   Widget _buildSuccessView(ThemeData theme) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(color: AppColors.success.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: const Icon(Icons.check, color: AppColors.success, size: 64)
-                .animate(onPlay: (controller) => controller.repeat())
-                .shimmer(duration: 2.seconds),
-            ).animate().scaleXY(curve: Curves.elasticOut, duration: 800.ms),
-            const SizedBox(height: 32),
-            Text('Report Logged', style: theme.textTheme.displayMedium)
-                .animate().fadeIn(delay: 300.ms).slideY(begin: 0.2),
-            const SizedBox(height: 16),
-            Text('We have analyzed the context and dispatched alerts to the relevant networks.', 
-                textAlign: TextAlign.center, style: theme.textTheme.bodyLarge)
-                .animate().fadeIn(delay: 400.ms),
-            const SizedBox(height: 48),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.surfaceContainerLow, 
-                foregroundColor: AppColors.onSurface,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                gradient: const RadialGradient(
+                  colors: [Color(0xFFCCFBF1), Color(0x00CCFBF1)],
+                ),
+                shape: BoxShape.circle,
               ),
-              onPressed: () => setState(() { _submitted = false; _descCtrl.clear(); _mediaUrls.clear(); }),
-              child: const Text('New Submission'),
-            ).animate().fadeIn(delay: 500.ms),
+              alignment: Alignment.center,
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: AppColors.success,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.success.withValues(alpha: 0.32),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.check_rounded, color: Colors.white, size: 42),
+              ),
+            ).animate().scaleXY(curve: AppMotion.easeBack, duration: AppMotion.emphasized),
+            const SizedBox(height: AppSpacing.xl),
+            Text('Report logged', style: theme.textTheme.headlineLarge)
+                .animate(delay: 200.ms).fadeIn(duration: AppMotion.standard),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'We have analyzed the context and dispatched alerts to the relevant networks.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ).animate(delay: 280.ms).fadeIn(duration: AppMotion.standard),
+            const SizedBox(height: AppSpacing.xxl),
+            FilledButton.tonalIcon(
+              onPressed: () => setState(() {
+                _submitted = false;
+                _descCtrl.clear();
+                _mediaUrls.clear();
+              }),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('New submission'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryContainer,
+                foregroundColor: AppColors.onPrimaryContainer,
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.md),
+              ),
+            ).animate(delay: 360.ms).fadeIn(duration: AppMotion.standard),
           ],
         ),
       ),

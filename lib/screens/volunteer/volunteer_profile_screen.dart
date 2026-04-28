@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/user_model.dart';
@@ -28,7 +29,7 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
     super.initState();
     final appState = context.read<AppState>();
     final user = appState.currentUser;
-    
+
     _nameController = TextEditingController(text: user?.name ?? '');
     _phoneController = TextEditingController(text: user?.phone ?? '');
     _locationController = TextEditingController(text: user?.location ?? '');
@@ -55,8 +56,8 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
     try {
       final appState = context.read<AppState>();
       final user = appState.currentUser;
-      
-      if (user == null) throw Exception("User not loaded");
+
+      if (user == null) throw Exception('User not loaded');
 
       final updatedUser = AppUser(
         id: user.id,
@@ -89,14 +90,19 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
         }
         setState(() => _isEditing = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated successfully!')),
+          SnackBar(
+            content: const Text('Profile updated.'),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: AppRadius.lgR),
+          ),
         );
       }
     } catch (e) {
       setState(() => _saveError = e.toString());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
         );
       }
     } finally {
@@ -121,335 +127,389 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
     final theme = Theme.of(context);
 
     if (user == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Profile')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Profile'),
-        actions: [
-          if (!_isEditing)
-            TextButton(
-              onPressed: () => setState(() => _isEditing = true),
-              child: const Text('Edit'),
-            )
-          else
-            TextButton(
-              onPressed: _isSaving ? null : _saveChanges,
-              child: _isSaving ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ) : const Text('Save'),
+      backgroundColor: AppColors.surface,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xxl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTopBar(theme),
+              const SizedBox(height: AppSpacing.lg),
+              _buildIdentityCard(theme, user, appState).animate().fadeIn(duration: AppMotion.standard).slideY(begin: 0.04, end: 0),
+              const SizedBox(height: AppSpacing.lg),
+              _buildStatsCard(theme, user, appState).animate(delay: 80.ms).fadeIn(duration: AppMotion.standard),
+              if (_isEditing) ...[
+                const SizedBox(height: AppSpacing.xl),
+                _sectionTitle(theme, 'Edit profile'),
+                const SizedBox(height: AppSpacing.md),
+                _buildTextField(controller: _nameController, label: 'Full name', icon: Icons.person_rounded),
+                const SizedBox(height: AppSpacing.md),
+                _buildTextField(
+                  controller: _phoneController,
+                  label: 'Phone number',
+                  icon: Icons.phone_rounded,
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _buildTextField(
+                  controller: _locationController,
+                  label: 'Location / area',
+                  icon: Icons.location_on_rounded,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _buildAvailabilityToggle(theme),
+              ],
+              const SizedBox(height: AppSpacing.xl),
+              _sectionTitle(theme, 'Skills'),
+              const SizedBox(height: AppSpacing.md),
+              if (_isEditing) _buildAddSkillRow(theme),
+              const SizedBox(height: AppSpacing.md),
+              _buildSkillsBlock(theme),
+              const SizedBox(height: AppSpacing.xl),
+              _sectionTitle(theme, 'Location privacy'),
+              const SizedBox(height: AppSpacing.md),
+              _buildLocationPrivacyCard(theme, appState),
+              if (_saveError != null) ...[
+                const SizedBox(height: AppSpacing.lg),
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: AppColors.errorContainer,
+                    borderRadius: AppRadius.lgR,
+                    border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                  ),
+                  child: Text('Error: $_saveError', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onErrorContainer)),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────── pieces
+  Widget _buildTopBar(ThemeData theme) {
+    return Row(
+      children: [
+        Text('My profile', style: theme.textTheme.headlineLarge),
+        const Spacer(),
+        if (!_isEditing)
+          FilledButton.tonalIcon(
+            onPressed: () => setState(() => _isEditing = true),
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: const Text('Edit'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryContainer,
+              foregroundColor: AppColors.onPrimaryContainer,
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
             ),
+          )
+        else
+          FilledButton.icon(
+            onPressed: _isSaving ? null : _saveChanges,
+            icon: _isSaving
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary))
+                : const Icon(Icons.check_rounded, size: 18),
+            label: Text(_isSaving ? 'Saving' : 'Save'),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildIdentityCard(ThemeData theme, AppUser user, AppState appState) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppColors.primary, Color(0xFF3B62F0)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: AppRadius.xlR,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.22),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Profile Avatar & Summary
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: AppDecorations.baseCard,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundColor: AppColors.primaryContainer,
-                        child: Text(
-                          user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.onPrimary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 24),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(user.name, style: theme.textTheme.headlineSmall),
-                            const SizedBox(height: 8),
-                            Text(user.email, style: theme.textTheme.bodyMedium),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.success.withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    _isAvailable ? 'Available' : 'Unavailable',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: _isAvailable ? AppColors.success : AppColors.error,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  // Stats
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildStatTile('Tasks Done', '${appState.completedTasks.length}'),
-                      _buildStatTile('Est. hours', '${appState.completedTasks.length * 2}'),
-                      _buildStatTile('Trust Score', '${user.trustScore.toStringAsFixed(1)}/5'),
-                    ],
-                  ),
-                ],
+      child: Row(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: AppRadius.lgR,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
+            ),
+            child: Center(
+              child: Text(
+                user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
+                style: AppTypography.metric(size: 30, color: Colors.white),
               ),
             ),
-            const SizedBox(height: 32),
-
-            // Editable Fields
-            if (_isEditing) ...[
-              Text('Edit Profile', style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 24),
-              
-              _buildTextField(
-                controller: _nameController,
-                label: 'Full Name',
-                icon: Icons.person,
-              ),
-              const SizedBox(height: 16),
-              
-              _buildTextField(
-                controller: _phoneController,
-                label: 'Phone Number',
-                icon: Icons.phone,
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 16),
-              
-              _buildTextField(
-                controller: _locationController,
-                label: 'Location/Area',
-                icon: Icons.location_on,
-              ),
-              const SizedBox(height: 24),
-
-              // Availability Toggle
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: AppDecorations.contentBlock,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Available for Tasks', style: theme.textTheme.labelLarge),
-                    Switch(
-                      value: _isAvailable,
-                      activeThumbColor: AppColors.success,
-                      onChanged: (value) => setState(() => _isAvailable = value),
-                    ),
-                  ],
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.name.isEmpty ? 'Volunteer' : user.name,
+                  style: theme.textTheme.titleLarge?.copyWith(color: Colors.white),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              const SizedBox(height: 32),
-            ],
-
-            // Skills Section
-            Text('Skills', style: theme.textTheme.headlineSmall),
-            const SizedBox(height: 16),
-            
-            if (_isEditing)
-              Column(
-                children: [
-                  Row(
+                const SizedBox(height: 2),
+                Text(
+                  user.email,
+                  style: theme.textTheme.bodySmall?.copyWith(color: Colors.white.withValues(alpha: 0.8)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: AppRadius.pillR,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _newSkillController,
-                          decoration: InputDecoration(
-                            hintText: 'Add a skill (e.g., Medical, Rescue)',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          ),
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: _isAvailable ? AppColors.success : AppColors.urgencyHigh,
+                          shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: _addSkill,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        _isAvailable ? 'Available' : 'Unavailable',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
                         ),
-                        child: const Icon(Icons.add),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-
-            if (_editingSkills.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(24),
                 ),
-                child: Center(
-                  child: Text(
-                    _isEditing ? 'Add skills to get matched with tasks' : 'No skills added yet',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: AppColors.onSurfaceVariant,
-                    ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsCard(ThemeData theme, AppUser user, AppState appState) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: AppDecorations.baseCard,
+      child: Row(
+        children: [
+          Expanded(child: _statTile(theme, 'Tasks done', '${appState.completedTasks.length}', AppColors.primary)),
+          Container(width: 1, height: 36, color: AppColors.outlineVariant.withValues(alpha: 0.5)),
+          Expanded(child: _statTile(theme, 'Est. hours', '${appState.completedTasks.length * 2}', AppColors.secondary)),
+          Container(width: 1, height: 36, color: AppColors.outlineVariant.withValues(alpha: 0.5)),
+          Expanded(child: _statTile(theme, 'Trust score', '${user.trustScore.toStringAsFixed(1)}/5', AppColors.tertiary)),
+        ],
+      ),
+    );
+  }
+
+  Widget _statTile(ThemeData theme, String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(value, style: AppTypography.metric(size: 22, color: color)),
+        const SizedBox(height: 2),
+        Text(label, style: theme.textTheme.labelSmall, textAlign: TextAlign.center),
+      ],
+    );
+  }
+
+  Widget _sectionTitle(ThemeData theme, String label) {
+    return Text(label, style: theme.textTheme.titleLarge);
+  }
+
+  Widget _buildAvailabilityToggle(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+      decoration: AppDecorations.cardSubtle,
+      child: Row(
+        children: [
+          const Icon(Icons.event_available_rounded, color: AppColors.success),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(child: Text('Available for tasks', style: theme.textTheme.titleSmall)),
+          Switch(
+            value: _isAvailable,
+            activeThumbColor: AppColors.success,
+            onChanged: (v) => setState(() => _isAvailable = v),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddSkillRow(ThemeData theme) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _newSkillController,
+            decoration: const InputDecoration(
+              hintText: 'Add a skill (e.g., medical, rescue)',
+              prefixIcon: Icon(Icons.add_circle_outline_rounded),
+            ),
+            onSubmitted: (_) => _addSkill(),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        FilledButton(
+          onPressed: _addSkill,
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+          ),
+          child: const Icon(Icons.add_rounded),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSkillsBlock(ThemeData theme) {
+    if (_editingSkills.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        decoration: AppDecorations.cardSubtle,
+        child: Center(
+          child: Text(
+            _isEditing ? 'Add skills to get matched with tasks' : 'No skills added yet',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+      );
+    }
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: _editingSkills.map((skill) {
+        return Container(
+          padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, _isEditing ? 4 : AppSpacing.md, AppSpacing.sm),
+          decoration: AppDecorations.tagAccent(color: AppColors.primary),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                skill,
+                style: theme.textTheme.labelMedium?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w700),
+              ),
+              if (_isEditing) ...[
+                const SizedBox(width: 4),
+                InkWell(
+                  borderRadius: AppRadius.pillR,
+                  onTap: () => setState(() => _editingSkills.remove(skill)),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.close_rounded, size: 14, color: AppColors.primary),
                   ),
                 ),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _editingSkills.map((skill) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryContainer,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          skill,
-                          style: const TextStyle(
-                            color: AppColors.onPrimary,
-                            fontWeight: FontWeight.w600,
-                          ),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildLocationPrivacyCard(ThemeData theme, AppState appState) {
+    final tracking = appState.locationService?.isTracking == true;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: AppDecorations.baseCard,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: (tracking ? AppColors.success : AppColors.surfaceContainerHigh).withValues(alpha: tracking ? 0.18 : 1),
+                  borderRadius: AppRadius.mdR,
+                ),
+                child: Icon(
+                  tracking ? Icons.my_location_rounded : Icons.location_off_rounded,
+                  color: tracking ? AppColors.success : AppColors.onSurfaceVariant,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  tracking ? 'Location is being shared' : 'Location sharing is off',
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Your location is ephemeral and auto-expires after 2 hours. You can permanently delete it any time.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => appState.toggleLocationTracking(),
+                  icon: Icon(tracking ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                  label: Text(tracking ? 'Pause' : 'Start'),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Delete location data'),
+                      content: const Text('This permanently removes your location from our servers. Continue?'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Delete', style: TextStyle(color: AppColors.error)),
                         ),
-                        if (_isEditing)
-                          GestureDetector(
-                            onTap: () => setState(() => _editingSkills.remove(skill)),
-                            child: const Padding(
-                              padding: EdgeInsets.only(left: 8),
-                              child: Icon(Icons.close, size: 16, color: AppColors.onPrimary),
-                            ),
-                          ),
                       ],
                     ),
                   );
-                }).toList(),
-              ),
-
-            // Location Privacy section
-            const SizedBox(height: 32),
-            Text('Location Privacy', style: theme.textTheme.headlineSmall),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: AppDecorations.contentBlock,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        appState.locationService?.isTracking == true
-                            ? Icons.location_on
-                            : Icons.location_off,
-                        color: appState.locationService?.isTracking == true
-                            ? AppColors.success
-                            : AppColors.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        appState.locationService?.isTracking == true
-                            ? 'Location is being shared'
-                            : 'Location sharing is off',
-                        style: theme.textTheme.titleSmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Your location is ephemeral and auto-expires after 2 hours. You can permanently delete it at any time.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => appState.toggleLocationTracking(),
-                          icon: Icon(appState.locationService?.isTracking == true ? Icons.pause : Icons.play_arrow),
-                          label: Text(appState.locationService?.isTracking == true ? 'Pause Sharing' : 'Start Sharing'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          final confirmed = await showDialog<bool>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('Delete Location Data'),
-                              content: const Text('This will permanently remove your location from our servers. Continue?'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx, true),
-                                  child: const Text('Delete', style: TextStyle(color: AppColors.error)),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (confirmed == true && mounted) {
-                            await context.read<AppState>().revokeLocation();
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Location data deleted permanently.')),
-                              );
-                            }
-                          }
-                        },
-                        style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
-                        icon: const Icon(Icons.delete_forever),
-                        label: const Text('Delete Data'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            if (_saveError != null) ...[
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.error.withValues(alpha: 0.5)),
-                ),
-                child: Text(
-                  'Error: $_saveError',
-                  style: const TextStyle(color: AppColors.error),
-                ),
+                  if (confirmed != true) return;
+                  if (!mounted) return;
+                  await context.read<AppState>().revokeLocation();
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Location data deleted permanently.')),
+                  );
+                },
+                style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
+                icon: const Icon(Icons.delete_forever_rounded),
+                label: const Text('Delete'),
               ),
             ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -466,20 +526,6 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      ),
-    );
-  }
-
-  Widget _buildStatTile(String label, String value) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(value, style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 4),
-          Text(label, style: Theme.of(context).textTheme.labelMedium),
-        ],
       ),
     );
   }

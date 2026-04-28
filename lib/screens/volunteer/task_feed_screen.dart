@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_state.dart';
 import '../../config/theme.dart';
@@ -19,9 +20,7 @@ class _VolunteerTaskFeedState extends State<VolunteerTaskFeed> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       context.read<AppState>().refreshHistoricalTasks();
     });
   }
@@ -32,16 +31,17 @@ class _VolunteerTaskFeedState extends State<VolunteerTaskFeed> {
     state.acceptTask(taskId, userId);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Task accepted! Moved to Active tab.'),
+        SnackBar(
+          content: const Text('Task accepted — moved to Active.'),
           backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: AppRadius.lgR),
         ),
       );
     }
   }
 
   void _declineTask(String taskId) {
-    // For now, just remove from local view by marking cancelled
     context.read<AppState>().updateTaskStatus(taskId, TaskStatus.cancelled);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -54,9 +54,11 @@ class _VolunteerTaskFeedState extends State<VolunteerTaskFeed> {
     context.read<AppState>().updateTaskStatus(taskId, TaskStatus.completed);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Task completed! Great work! 🎉'),
+        SnackBar(
+          content: const Text('Task completed — great work.'),
           backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: AppRadius.lgR),
         ),
       );
     }
@@ -69,7 +71,6 @@ class _VolunteerTaskFeedState extends State<VolunteerTaskFeed> {
     final user = state.currentUser;
     final userSkills = user?.skills ?? [];
 
-    // Matched tab: prefer tasks whose requiredSkills overlap volunteer skills (or no skills required).
     final openCandidates = state.tasks.where((t) => t.status == TaskStatus.open).toList();
     final matchedTasks = openCandidates.where((t) {
       if (userSkills.isEmpty) return true;
@@ -77,199 +78,112 @@ class _VolunteerTaskFeedState extends State<VolunteerTaskFeed> {
       return t.requiredSkills.any((s) => userSkills.contains(s));
     }).toList()
       ..sort((a, b) {
-        // Prioritize tasks whose requiredSkills overlap with user skills
         final aMatch = a.requiredSkills.where((s) => userSkills.contains(s)).length;
         final bMatch = b.requiredSkills.where((s) => userSkills.contains(s)).length;
         if (aMatch != bMatch) return bMatch.compareTo(aMatch);
-        // Fall back to matchScore
         return (b.matchScore ?? 0).compareTo(a.matchScore ?? 0);
       });
+
     final activeTasks = state.tasks
-        .where(
-          (t) =>
-              t.status == TaskStatus.inProgress ||
-              t.status == TaskStatus.assigned,
-        )
+        .where((t) => t.status == TaskStatus.inProgress || t.status == TaskStatus.assigned)
         .toList();
-    final doneTasks = state.tasks
-        .where((t) => t.status == TaskStatus.completed)
-        .toList();
+    final doneTasks = state.tasks.where((t) => t.status == TaskStatus.completed).toList();
 
-    List<VolunteerTask> currentList = _tabIndex == 0
-        ? matchedTasks
-        : (_tabIndex == 1 ? activeTasks : doneTasks);
+    final currentList = _tabIndex == 0 ? matchedTasks : (_tabIndex == 1 ? activeTasks : doneTasks);
 
-    return Column(
-      children: [
-        // App bar area
-        Container(
-          color: AppColors.surface,
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Impact Feed', style: theme.textTheme.displayMedium),
-              const SizedBox(height: 24),
-              // Beautiful organic tabs
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: AppDecorations.contentBlock,
-                child: Row(
-                  children: [
-                    _buildTab(0, 'Matched', matchedTasks.length),
-                    _buildTab(1, 'Active', activeTasks.length),
-                    _buildTab(2, 'Done', doneTasks.length),
-                  ],
-                ),
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: () async {
+        await context.read<AppState>().refreshHistoricalTasks();
+      },
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(child: _buildHero(theme, user?.name)),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+              child: _buildSegmentedTabs(
+                theme,
+                matched: matchedTasks.length,
+                active: activeTasks.length,
+                done: doneTasks.length,
               ),
-            ],
+            ),
           ),
-        ),
-
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (state.tasks.isEmpty && state.backendError != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.error.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          if (state.tasks.isEmpty && state.backendError != null)
+            SliverToBoxAdapter(child: _buildBackendErrorBanner(theme, state.backendError!)),
+          if (state.tasks.isEmpty)
+            SliverToBoxAdapter(child: _buildEmptyExplainer(theme)),
+          if (currentList.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _buildEmptyState(theme),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.xxl),
+              sliver: SliverList.builder(
+                itemCount: currentList.length,
+                itemBuilder: (context, index) {
+                  final task = currentList[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                    child: Column(
                       children: [
-                        const Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 22),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            state.backendError!,
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ),
+                        TaskCard(task: task),
+                        const SizedBox(height: AppSpacing.md),
+                        if (_tabIndex == 0) _buildAcceptDeclineRow(task.id),
+                        if (_tabIndex == 1) _buildCompleteButton(task.id),
                       ],
                     ),
-                  ),
-                ),
-              if (state.tasks.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: ExpansionTile(
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-                    collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    title: Text('Why are there no tasks?', style: theme.textTheme.titleSmall),
-                    subtitle: Text(
-                      'Tasks come from the volunteer-area pipeline (API + location). Tap for details.',
-                      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant),
-                    ),
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        child: Text(
-                          'Tasks appear when the backend returns volunteer_area_tasks within your radius, '
-                          'and your session has a location anchor (one-time GPS at sign-in or ongoing sharing). '
-                          'Matched also filters by skills when tasks specify required skills. '
-                          'Empty often means pipeline or geography — not necessarily a defect.',
-                          style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              Expanded(
-                child: currentList.isEmpty
-                    ? _buildEmptyState(theme)
-                    : ListView.builder(
-                  padding: const EdgeInsets.all(24),
-                  itemCount: currentList.length,
-                  itemBuilder: (context, index) {
-                    final task = currentList[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 32),
-                      child: Column(
-                        children: [
-                          TaskCard(task: task),
-                          const SizedBox(height: 16),
-                          // Only show action buttons for Matched / Active
-                          if (_tabIndex == 0)
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: ElevatedButton(
-                                    onPressed: () => _acceptTask(task.id),
-                                    child: const Text('Accept Need'),
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                TextButton(
-                                  onPressed: () => _declineTask(task.id),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: AppColors.onSurfaceVariant,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 24,
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                  child: const Text('Decline'),
-                                ),
-                              ],
-                            )
-                          else if (_tabIndex == 1)
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: () => _markComplete(task.id),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.success,
-                                ),
-                                child: const Text('Mark Complete'),
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                  ).animate(delay: (index * 40).ms).fadeIn(duration: AppMotion.standard).slideY(begin: 0.04, end: 0);
+                },
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _buildEmptyState(ThemeData theme) {
-    final messages = [
-      ['No matching tasks found', 'Tasks that match your skills will appear here. Try enabling location sharing.', Icons.search_off],
-      ['No active tasks', 'Accept tasks from the Matched tab to see them here.', Icons.assignment_outlined],
-      ['No completed tasks yet', 'Tasks you complete will appear here. Keep up the great work!', Icons.emoji_events_outlined],
-    ];
-    final msg = messages[_tabIndex];
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(48),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceContainerLow,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(msg[2] as IconData, size: 48, color: AppColors.onSurfaceVariant),
-            ),
-            const SizedBox(height: 24),
-            Text(msg[0] as String, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
-            const SizedBox(height: 8),
-            Text(msg[1] as String, style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.onSurfaceVariant), textAlign: TextAlign.center),
-          ],
-        ),
+  // ───────────────────────────────────────────── pieces
+  Widget _buildHero(ThemeData theme, String? name) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            name == null ? 'Impact Feed' : 'Hi, ${name.split(' ').first}',
+            style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 4),
+          Text('Find your next task', style: theme.textTheme.headlineLarge),
+          const SizedBox(height: 6),
+          Text(
+            'Tasks ranked by your skills, area, and urgency.',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: AppMotion.standard);
+  }
+
+  Widget _buildSegmentedTabs(ThemeData theme,
+      {required int matched, required int active, required int done}) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLow,
+        borderRadius: AppRadius.pillR,
+      ),
+      child: Row(
+        children: [
+          _buildTab(0, 'Matched', matched),
+          _buildTab(1, 'Active', active),
+          _buildTab(2, 'Done', done),
+        ],
       ),
     );
   }
@@ -277,16 +191,19 @@ class _VolunteerTaskFeedState extends State<VolunteerTaskFeed> {
   Widget _buildTab(int index, String label, int count) {
     final isSelected = _tabIndex == index;
     final theme = Theme.of(context);
-
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _tabIndex = index),
+        behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: isSelected
-              ? AppDecorations.baseCard.copyWith(boxShadow: [])
-              : const BoxDecoration(),
+          duration: AppMotion.standard,
+          curve: AppMotion.easeStandard,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.surfaceContainerLowest : Colors.transparent,
+            borderRadius: AppRadius.pillR,
+            boxShadow: isSelected ? AppElevation.soft : null,
+          ),
           child: Center(
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -294,31 +211,21 @@ class _VolunteerTaskFeedState extends State<VolunteerTaskFeed> {
                 Text(
                   label,
                   style: theme.textTheme.labelLarge?.copyWith(
-                    color: isSelected
-                        ? AppColors.onSurface
-                        : AppColors.onSurfaceVariant,
+                    color: isSelected ? AppColors.onSurface : AppColors.onSurfaceVariant,
                   ),
                 ),
                 if (count > 0) ...[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: isSelected
-                          ? AppColors.primaryContainer
-                          : AppColors.surfaceDim,
-                      borderRadius: BorderRadius.circular(16),
+                      color: isSelected ? AppColors.primaryContainer : AppColors.surfaceContainerHigh,
+                      borderRadius: AppRadius.pillR,
                     ),
                     child: Text(
                       '$count',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: isSelected
-                            ? AppColors.onPrimary
-                            : AppColors.onSurfaceVariant,
-                        fontSize: 11,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: isSelected ? AppColors.onPrimaryContainer : AppColors.onSurfaceVariant,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -329,6 +236,148 @@ class _VolunteerTaskFeedState extends State<VolunteerTaskFeed> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAcceptDeclineRow(String taskId) {
+    return Row(
+      children: [
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: () => _acceptTask(taskId),
+            icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+            label: const Text('Accept'),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: OutlinedButton(
+            onPressed: () => _declineTask(taskId),
+            child: const Text('Decline'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompleteButton(String taskId) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: () => _markComplete(taskId),
+        style: FilledButton.styleFrom(backgroundColor: AppColors.success),
+        icon: const Icon(Icons.task_alt_rounded, size: 18),
+        label: const Text('Mark complete'),
+      ),
+    );
+  }
+
+  Widget _buildBackendErrorBanner(ThemeData theme, String error) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.errorContainer,
+          borderRadius: AppRadius.lgR,
+          border: Border.all(color: AppColors.error.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 20),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                error,
+                style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onErrorContainer),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyExplainer(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ClipRRect(
+          borderRadius: AppRadius.lgR,
+          child: Container(
+            decoration: AppDecorations.cardSubtle,
+            child: ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryContainer,
+                  borderRadius: AppRadius.mdR,
+                ),
+                child: const Icon(Icons.help_outline_rounded, color: AppColors.primary, size: 20),
+              ),
+              title: Text('Why are there no tasks?', style: theme.textTheme.titleSmall),
+              subtitle: Text(
+                'Tasks come from the volunteer-area pipeline. Tap for details.',
+                style: theme.textTheme.bodySmall,
+              ),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
+                  child: Text(
+                    'Tasks appear when the backend returns volunteer_area_tasks within your radius and your '
+                    'session has a location anchor (one-time GPS at sign-in or ongoing sharing). The "Matched" '
+                    'tab also filters by skills when tasks specify required skills. Empty often means pipeline '
+                    'or geography — not necessarily a defect.',
+                    style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(ThemeData theme) {
+    final messages = [
+      ['No matching tasks', 'Tasks that match your skills will appear here. Try enabling location sharing.', Icons.search_off_rounded],
+      ['No active tasks', 'Accept tasks from the Matched tab to see them here.', Icons.assignment_outlined],
+      ['No completed tasks yet', 'Tasks you complete will show up here. Keep going.', Icons.emoji_events_outlined],
+    ];
+    final msg = messages[_tabIndex];
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                gradient: const RadialGradient(
+                  colors: [Color(0xFFE2E8FF), Color(0x00E2E8FF)],
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(msg[2] as IconData, size: 40, color: AppColors.primary),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text(msg[0] as String, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              msg[1] as String,
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ).animate().fadeIn(duration: AppMotion.standard),
     );
   }
 }

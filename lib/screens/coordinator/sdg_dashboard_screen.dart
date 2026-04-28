@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../config/constants.dart';
@@ -20,107 +21,160 @@ class SDGDashboardScreen extends StatelessWidget {
     final sdgCounts = (metrics['sdgCounts'] as Map<int, int>?) ?? {};
     final sdgPeople = (metrics['sdgPeople'] as Map<int, int>?) ?? {};
 
-    // Build SDG rows from real data
-    final sdgRows = <Widget>[];
     final sortedSdgs = sdgCounts.keys.toList()..sort();
-    for (final tag in sortedSdgs) {
-      final name = AppConstants.sdgGoals[tag] ?? 'SDG $tag';
-      final count = sdgCounts[tag] ?? 0;
-      final people = sdgPeople[tag] ?? 0;
-      sdgRows.add(
-        _sdgRow(
-          context,
-          theme,
-          tag.toString().padLeft(2, '0'),
-          name,
-          count,
-          people,
-          () => _showTasksForSDGGoal(context, state, tag, name),
-        ),
-      );
-    }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Impact Dashboard')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Hero stat
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(32),
-              decoration: AppDecorations.baseCard,
-              child: Column(
+      backgroundColor: AppColors.surface,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xxl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Impact', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant)),
+              const SizedBox(height: 4),
+              Text('SDG dashboard', style: theme.textTheme.headlineLarge),
+              const SizedBox(height: AppSpacing.lg),
+              _buildHeroStat(theme, livesImproved, completedCount, totalCount).animate().fadeIn(duration: AppMotion.standard).slideY(begin: 0.04, end: 0),
+              const SizedBox(height: AppSpacing.lg),
+              Row(
                 children: [
-                  Text(
-                    _formatNumber(livesImproved),
-                    style: theme.textTheme.displayLarge?.copyWith(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Total People Reached',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: AppColors.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '$completedCount of $totalCount tasks completed',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: AppColors.onSurfaceVariant,
-                    ),
-                  ),
+                  Expanded(child: _metricTile(theme, '$completionRate%', 'Completion', AppColors.primary, Icons.donut_small_rounded)),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(child: _metricTile(theme, '${state.criticalTaskCount}', 'Critical', AppColors.error, Icons.priority_high_rounded)),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(child: _metricTile(theme, '${state.reportCount}', 'Reports', AppColors.secondary, Icons.summarize_rounded)),
                 ],
+              ).animate(delay: 80.ms).fadeIn(duration: AppMotion.standard),
+              const SizedBox(height: AppSpacing.xl),
+              Text('SDG breakdown', style: theme.textTheme.titleLarge),
+              const SizedBox(height: AppSpacing.md),
+              if (sortedSdgs.isEmpty)
+                _buildEmptyState(theme)
+              else
+                ...sortedSdgs.asMap().entries.map((entry) {
+                  final i = entry.key;
+                  final tag = entry.value;
+                  final name = AppConstants.sdgGoals[tag] ?? 'SDG $tag';
+                  final count = sdgCounts[tag] ?? 0;
+                  final people = sdgPeople[tag] ?? 0;
+                  return _sdgRow(
+                    context,
+                    theme,
+                    tag.toString().padLeft(2, '0'),
+                    name,
+                    count,
+                    people,
+                    () => _showTasksForSDGGoal(context, state, tag, name),
+                  ).animate(delay: (i * 40).ms).fadeIn(duration: AppMotion.standard).slideY(begin: 0.04, end: 0);
+                }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ────────────────────────────────────────────────────────── pieces
+  Widget _buildHeroStat(ThemeData theme, int lives, int completed, int total) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppColors.primary, Color(0xFF3B62F0), AppColors.secondary],
+          stops: [0.0, 0.55, 1.0],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: AppRadius.xlR,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.22),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'People reached',
+            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.85)),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(_formatNumber(lives), style: AppTypography.metric(size: 56, color: Colors.white)),
+          const SizedBox(height: AppSpacing.sm),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: AppRadius.pillR,
+            ),
+            child: Text(
+              '$completed of $total tasks completed',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 32),
+          ),
+        ],
+      ),
+    );
+  }
 
-            // Metric circles
-            Row(
-              children: [
-                _metricCircle(theme, '$completionRate%', 'Task Completion'),
-                const SizedBox(width: 16),
-                _metricCircle(theme, '${state.criticalTaskCount}', 'Critical Open'),
-                const SizedBox(width: 16),
-                _metricCircle(theme, '${state.reportCount}', 'Field Reports'),
-              ],
+  Widget _metricTile(ThemeData theme, String value, String label, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: AppDecorations.baseCard,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: AppRadius.mdR,
             ),
-            const SizedBox(height: 40),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(value, style: AppTypography.metric(size: 24, color: color)),
+          const SizedBox(height: 2),
+          Text(label, style: theme.textTheme.labelSmall),
+        ],
+      ),
+    );
+  }
 
-            // SDG breakdown
-            Text('SDG Impact Breakdown', style: theme.textTheme.headlineSmall),
-            const SizedBox(height: 16),
-            if (sdgRows.isEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(32),
-                decoration: AppDecorations.contentBlock,
-                child: Column(
-                  children: [
-                    Icon(Icons.analytics_outlined, size: 48, color: AppColors.onSurfaceVariant),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No SDG data yet',
-                      style: theme.textTheme.titleMedium?.copyWith(color: AppColors.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Impact data will populate as tasks are created and completed.',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.onSurfaceVariant),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              )
-            else
-              ...sdgRows,
-          ],
-        ),
+  Widget _buildEmptyState(ThemeData theme) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: AppDecorations.cardSubtle,
+      child: Column(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: AppColors.primaryContainer,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.analytics_outlined, size: 28, color: AppColors.primary),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text('No SDG data yet', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text(
+            'Impact metrics will populate as tasks are created and completed.',
+            style: theme.textTheme.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
@@ -131,84 +185,94 @@ class SDGDashboardScreen extends StatelessWidget {
     return number.toString();
   }
 
-  Widget _metricCircle(ThemeData theme, String value, String label) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: AppDecorations.baseCard,
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: theme.textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: AppColors.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _showTasksForSDGGoal(BuildContext context, AppState state, int tag, String name) {
     final related = state.tasks.where((t) => t.sdgTags.contains(tag)).toList();
 
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) {
         final theme = Theme.of(ctx);
-        final h = MediaQuery.of(ctx).size.height * 0.46;
+        final h = MediaQuery.of(ctx).size.height * 0.5;
         return SafeArea(
           child: SizedBox(
             height: h,
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(AppSpacing.lg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('SDG $tag · $name', style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${related.length} task(s)',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.onSurfaceVariant),
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.outlineVariant,
+                        borderRadius: AppRadius.pillR,
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.md),
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryContainer,
+                          borderRadius: AppRadius.mdR,
+                        ),
+                        child: Center(
+                          child: Text(
+                            tag.toString().padLeft(2, '0'),
+                            style: AppTypography.metric(size: 18, color: AppColors.primary),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(name, style: theme.textTheme.titleMedium),
+                            Text(
+                              '${related.length} task${related.length == 1 ? '' : 's'}',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
                   Expanded(
                     child: related.isEmpty
-                        ? Align(
-                            alignment: Alignment.topCenter,
-                            child: Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Text(
-                                'No tasks mapped to this goal yet.',
-                                style: theme.textTheme.bodyMedium,
-                              ),
+                        ? Center(
+                            child: Text(
+                              'No tasks mapped to this goal yet.',
+                              style: theme.textTheme.bodyMedium,
                             ),
                           )
                         : ListView.separated(
                             itemCount: related.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                             itemBuilder: (c, i) {
                               final t = related[i];
-                              return ListTile(
-                                title: Text(t.title),
-                                subtitle: Text(
-                                  '${t.status.name} · ${t.needType}',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                              return Container(
+                                padding: const EdgeInsets.all(AppSpacing.md),
+                                decoration: AppDecorations.cardSubtle,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(t.title, style: theme.textTheme.titleSmall),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${t.status.name} · ${t.needType}',
+                                      style: theme.textTheme.bodySmall,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
                                 ),
                               );
                             },
@@ -232,48 +296,49 @@ class SDGDashboardScreen extends StatelessWidget {
     int people,
     VoidCallback onTap,
   ) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: AppDecorations.contentBlock,
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Text(
-                  number,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primary,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadius.lgR,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+          decoration: AppDecorations.baseCard,
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.primary, Color(0xFF3B62F0)],
+                  ),
+                  borderRadius: AppRadius.mdR,
+                ),
+                child: Center(
+                  child: Text(
+                    number,
+                    style: AppTypography.metric(size: 17, color: Colors.white),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: theme.textTheme.titleSmall),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$tasks tasks · ${_formatNumber(people)} people reached',
-                    style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant),
-                  ),
-                ],
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name, style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$tasks task${tasks == 1 ? '' : 's'} · ${_formatNumber(people)} reached',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.outlineVariant),
-          ],
+              const Icon(Icons.chevron_right_rounded, color: AppColors.outlineVariant),
+            ],
+          ),
         ),
       ),
     );
