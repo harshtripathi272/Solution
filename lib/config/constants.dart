@@ -5,6 +5,7 @@ class AppConstants {
 
   // Backend API configuration
   static const String apiBaseUrl = 'http://localhost:8000'; // TODO: Change to production URL
+
   static const String heatmapDataEndpoint = '/api/v1/heatmap-data';
 
   // SDG Goals relevant to this app
