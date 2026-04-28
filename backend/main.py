@@ -118,6 +118,7 @@ async def lifespan(app: FastAPI):
     ingestion_manager.start()
     yield
     await ingestion_manager.stop()
+    await broker.shutdown()         # cancel GCP streaming-pull threads (no-op for mock)
     logger.info("---| Shutting down Crisis Pipeline |---")
 
 app = FastAPI(
@@ -237,6 +238,50 @@ def update_location(loc: LocationUpdate, decoded_token: dict = Depends(get_curre
             detail="Location update throttled or coordinates invalid. Try again shortly."
         )
 
+async def _process_report_submission(
+    req: NGOReportRequest,
+    current_user: UserProfile,
+    event_id: str,
+    ts: datetime,
+) -> None:
+    try:
+        insight = await multimodal_preprocessor.analyze_evidence(
+            media_urls=req.media_urls,
+            description_hint=req.description,
+        )
+
+        event_metadata = {
+            **req.metadata,
+            "reporter_uid": current_user.uid,
+            "organization_id": current_user.organization_id,
+            "multimodal_analysis": {
+                "summary": insight.summary,
+                "destruction_detected": insight.destruction_detected,
+                "crowd_size_estimate": insight.crowd_size_estimate,
+                "distress_level": insight.distress_level,
+                "confidence": insight.confidence,
+            },
+            "media_urls": req.media_urls,
+        }
+
+        event = UnifiedIngestionEvent(
+            id=event_id,
+            location=IngestionLocation(latitude=req.latitude, longitude=req.longitude),
+            need_type=insight.detected_needs[0] if insight.detected_needs else req.need_type,
+            severity=req.severity,
+            timestamp=ts,
+            source=f"NGO_APP_{current_user.organization_id or 'GENERAL'}",
+            confidence_score=insight.confidence or 0.8,
+            description=f"{req.description}\n\n[Multimodal AI Summary]: {insight.summary}",
+            population_affected=insight.population_affected,
+            metadata=event_metadata,
+            needs_geocoding=False,
+        )
+
+        await broker.publish(TOPIC_INGESTION_NORMALIZED, event)
+        logger.info("[API] Report %s queued for ingestion", event_id)
+    except Exception as exc:
+        logger.exception("[API] Failed to process report %s: %s", event_id, exc)
     return {
         "status": "ok",
         "cached_until": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
@@ -251,51 +296,6 @@ def revoke_location(decoded_token: dict = Depends(get_current_user_token)):
     uid = decoded_token.get("uid")
     location_store.remove_user(uid)
     return {"status": "ok", "message": "Your location data has been permanently deleted."}
-
-
-@app.post("/api/v1/ingestion/survey")
-async def ingest_survey_data(
-    payload: SurveyIngestRequest,
-    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
-):
-    """On-demand local CSV/JSON ingestion for NGO survey or field data."""
-    try:
-        count = await ingestion_manager.ingest_survey_file(payload.file_path)
-        return {
-            "status": "ok",
-            "ingested": count,
-            "file_path": payload.file_path,
-            "requested_by": current_user.uid,
-        }
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
-        logger.error("Survey ingestion failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Survey ingestion failed")
-
-
-@app.post("/api/v1/ingestion/ngo-reports")
-async def ingest_ngo_reports(
-    payload: NGOReportsIngestRequest,
-    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
-):
-    """On-demand scrape of NGO publication pages (prototype mode)."""
-    try:
-        count = await ingestion_manager.ingest_ngo_reports_once(max_reports=payload.max_reports)
-        return {
-            "status": "ok",
-            "ingested": count,
-            "max_reports": payload.max_reports,
-            "requested_by": current_user.uid,
-        }
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
-        logger.error("NGO reports ingestion failed: %s", exc)
-        raise HTTPException(status_code=500, detail="NGO reports ingestion failed")
-
 
 @app.post("/api/v1/webhooks/changedetection/ngo")
 async def changedetection_ngo_webhook(
@@ -460,55 +460,17 @@ async def submit_report(
     """
     logger.info("[API] Received NGO report from %s", current_user.uid)
 
-    # 1. Multimodal Preprocessing (Gemini Placeholder)
-    insight = await multimodal_preprocessor.analyze_evidence(
-        media_urls=req.media_urls,
-        description_hint=req.description
-    )
-
-    # 2. Extract unique ID and timestamp
+    # Extract unique ID and timestamp
     import uuid
     event_id = f"NGO-APP-{uuid.uuid4().hex[:8]}"
     ts = datetime.now(timezone.utc)
-
-    # 3. Create UnifiedIngestionEvent
-    # We combine user-provided metadata with multimodal insights.
-    event_metadata = {
-        **req.metadata,
-        "reporter_uid": current_user.uid,
-        "organization_id": current_user.organization_id,
-        "multimodal_analysis": {
-            "summary": insight.summary,
-            "destruction_detected": insight.destruction_detected,
-            "crowd_size_estimate": insight.crowd_size_estimate,
-            "distress_level": insight.distress_level,
-            "confidence": insight.confidence,
-        },
-        "media_urls": req.media_urls,
-    }
-
-    event = UnifiedIngestionEvent(
-        id=event_id,
-        location=IngestionLocation(latitude=req.latitude, longitude=req.longitude),
-        need_type=insight.detected_needs[0] if insight.detected_needs else req.need_type,
-        severity=req.severity,
-        timestamp=ts,
-        source=f"NGO_APP_{current_user.organization_id or 'GENERAL'}",
-        confidence_score=insight.confidence or 0.8,
-        description=f"{req.description}\n\n[Multimodal AI Summary]: {insight.summary}",
-        population_affected=insight.population_affected,
-        metadata=event_metadata,
-        needs_geocoding=False  # Direct app GPS
-    )
-
-    # 4. Inject into the normalized ingestion topic
-    await broker.publish(TOPIC_INGESTION_NORMALIZED, event)
+    asyncio.create_task(_process_report_submission(req, current_user, event_id, ts))
 
     return {
         "status": "ok",
         "message": "Report submitted and processing started.",
+        "id": event_id,
         "event_id": event_id,
-        "multimodal_summary": insight.summary
     }
 
 @app.get("/api/v1/tasks")

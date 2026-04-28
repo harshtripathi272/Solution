@@ -4,7 +4,23 @@ class AppConstants {
   static const String appVersion = '1.0.0';
 
   // Backend API configuration
-  static const String apiBaseUrl = 'http://localhost:8000'; // TODO: Change to production URL
+  static String get apiBaseUrl {
+    const overrideUrl = String.fromEnvironment('API_BASE_URL');
+    if (overrideUrl.isNotEmpty) {
+      return overrideUrl;
+    }
+
+    if (kIsWeb) {
+      return 'http://localhost:8000';
+    }
+
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return 'http://10.0.2.2:8000';
+      default:
+        return 'http://localhost:8000';
+    }
+  }
 
   static const String heatmapDataEndpoint = '/api/v1/heatmap-data';
 
