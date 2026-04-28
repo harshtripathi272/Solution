@@ -131,8 +131,8 @@ class BigQueryStore:
 
     def _init(self) -> None:
         project = os.environ.get("BIGQUERY_PROJECT", "").strip()
-        if not project:
-            logger.info("[BigQuery] BIGQUERY_PROJECT not set — analytics sink disabled.")
+        if not project or project.startswith("YOUR_"):
+            logger.info("[BigQuery] BIGQUERY_PROJECT not set or is a placeholder — analytics sink disabled.")
             return
         if not _BQ_AVAILABLE:
             logger.warning("[BigQuery] google-cloud-bigquery not installed — sink disabled.")
@@ -145,7 +145,24 @@ class BigQueryStore:
         severity_timeseries_table = os.environ.get("BIGQUERY_SEVERITY_TIMESERIES_TABLE", "severity_timeseries").strip()
 
         try:
-            self._client = bigquery.Client(project=project)
+            # --- Project B: use explicit analytics key, NOT the Firebase/Project A key ---
+            cred_path = os.environ.get("GCP_ANALYTICS_CREDENTIALS_PATH", "").strip() or None
+            if cred_path:
+                from google.oauth2 import service_account as _sa
+                _creds = _sa.Credentials.from_service_account_file(
+                    cred_path,
+                    scopes=["https://www.googleapis.com/auth/bigquery"],
+                )
+                self._client = bigquery.Client(project=project, credentials=_creds)
+                logger.info("[BigQuery] Using explicit credentials: %s", cred_path)
+            else:
+                # Fall back to Application Default Credentials
+                logger.warning(
+                    "[BigQuery] GCP_ANALYTICS_CREDENTIALS_PATH not set — using ADC. "
+                    "This may use the wrong project's credentials."
+                )
+                self._client = bigquery.Client(project=project)
+
             self._table_ref = f"{project}.{dataset}.{table}"
             self._document_table_ref = f"{project}.{dataset}.{document_table}"
             self._severity_table_ref = f"{project}.{dataset}.{severity_table}"

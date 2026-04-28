@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../config/constants.dart';
 import '../models/field_report_model.dart';
 import '../models/task_model.dart';
 import '../models/user_model.dart';
@@ -45,49 +46,8 @@ class AppState extends ChangeNotifier {
     }
     return const [];
   }
-
-  /// Maps `/api/v1/auth/register` JSON into app state. Trust is displayed as 4.0 until a dedicated trust API exists.
-  void _applyRegisterPayload(Map<String, dynamic> data, User firebaseUser) {
-    UserRole mappedRole = UserRole.volunteer;
-    if (data['role'] == 'coordinator') mappedRole = UserRole.coordinator;
-    if (data['role'] == 'ngo_worker') mappedRole = UserRole.ngoWorker;
-
-    _currentRole = mappedRole;
-    const trustDisplay = 4.0;
-    _currentUser = AppUser(
-      id: data['uid']?.toString() ?? firebaseUser.uid,
-      name: (data['name'] ?? firebaseUser.displayName ?? 'User').toString(),
-      email: (data['email'] ?? firebaseUser.email ?? '').toString(),
-      role: mappedRole,
-      ngoId: data['organization_id']?.toString(),
-      phone: data['phone']?.toString(),
-      skills: _parseSkills(data['skills']),
-      location: data['location']?.toString(),
-      isAvailable: data['is_available'] ?? true,
-      createdAt: _parseBackendDate(data['created_at']),
-      trustScore: trustDisplay,
-    );
-  }
-
-  /// Re-fetch profile from backend after local edits (same contract as sign-in).
-  Future<bool> refreshProfileFromServer() async {
-    final firebaseUser = FirebaseAuth.instance.currentUser;
-    if (firebaseUser == null || _apiClient == null) return false;
-    try {
-      final response = await _apiClient!.post('/api/v1/auth/register', {});
-      if (response.statusCode != 200) return false;
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      _applyRegisterPayload(data, firebaseUser);
-      notifyListeners();
-      return true;
-    } catch (e) {
-      if (kDebugMode) print('[AppState] refreshProfileFromServer: $e');
-      return false;
-    }
-  }
-
-  Future<void> refreshHistoricalTasks({
-    double? latitude,
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/v1/tasks')
+          .replace(queryParameters: queryParams);
     double? longitude,
     double radiusKm = 30.0,
     int limit = 20,
@@ -112,9 +72,8 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      final uri = Uri.parse(
-        'http://127.0.0.1:8000/api/v1/tasks',
-      ).replace(queryParameters: queryParams);
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/v1/tasks')
+          .replace(queryParameters: queryParams);
       final response = await _apiClient!.get(
         uri.path + (uri.hasQuery ? '?${uri.query}' : ''),
       );
@@ -141,7 +100,7 @@ class AppState extends ChangeNotifier {
   void setRequestedRole(UserRole role) {
     _requestedRole = role;
   }
-
+          id: reportId,
   // Getters
   UserRole get currentRole => _currentRole;
   AppUser? get currentUser => _currentUser;
@@ -245,7 +204,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _apiClient = ApiClient(baseUrl: "http://127.0.0.1:8000");
+      _apiClient = ApiClient(baseUrl: AppConstants.apiBaseUrl);
 
       // Pass the requested role if the user just signed up
       final payload = <String, dynamic>{};
@@ -386,8 +345,10 @@ class AppState extends ChangeNotifier {
       if (response.statusCode == 200 || response.statusCode == 201) {
         // 4. Update local state
         final data = jsonDecode(response.body);
+        final reportId =
+            data['id'] ?? data['event_id'] ?? DateTime.now().millisecondsSinceEpoch.toString();
         final report = FieldReport(
-          id: data['id'],
+          id: reportId,
           ngoId: _currentUser?.ngoId ?? 'local',
           submittedBy: _currentUser?.id ?? 'me',
           needType: needType,
