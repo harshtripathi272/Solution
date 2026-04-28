@@ -90,10 +90,10 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   String _roleLabel(UserRole r) => switch (r) {
-        UserRole.volunteer => 'Volunteer',
-        UserRole.coordinator => 'Coordinator',
-        UserRole.ngoWorker => 'NGO field worker',
-      };
+    UserRole.volunteer => 'Volunteer',
+    UserRole.coordinator => 'Coordinator',
+    UserRole.ngoWorker => 'NGO field worker',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +109,11 @@ class _AuthScreenState extends State<AuthScreen> {
             return SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(24, 36, 24, 28 + bottomInset),
               child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - MediaQuery.of(context).padding.vertical),
+                constraints: BoxConstraints(
+                  minHeight:
+                      constraints.maxHeight -
+                      MediaQuery.of(context).padding.vertical,
+                ),
                 child: IntrinsicHeight(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -150,16 +154,23 @@ class _AuthScreenState extends State<AuthScreen> {
                           decoration: BoxDecoration(
                             color: AppColors.error.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.error.withValues(alpha: 0.5)),
+                            border: Border.all(
+                              color: AppColors.error.withValues(alpha: 0.5),
+                            ),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.error_outline, color: AppColors.error),
+                              const Icon(
+                                Icons.error_outline,
+                                color: AppColors.error,
+                              ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
                                   _errorMessage!,
-                                  style: const TextStyle(color: AppColors.error),
+                                  style: const TextStyle(
+                                    color: AppColors.error,
+                                  ),
                                 ),
                               ),
                             ],
@@ -188,7 +199,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<UserRole>(
-                          value: _selectedRole,
+                          initialValue: _selectedRole,
                           isExpanded: true,
                           decoration: InputDecoration(
                             filled: true,
@@ -197,9 +208,15 @@ class _AuthScreenState extends State<AuthScreen> {
                               borderRadius: BorderRadius.circular(16),
                               borderSide: BorderSide.none,
                             ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
                           ),
-                          icon: const Icon(Icons.expand_more, color: AppColors.primary),
+                          icon: const Icon(
+                            Icons.expand_more,
+                            color: AppColors.primary,
+                          ),
                           items: _signUpRoleOrder.map((r) {
                             return DropdownMenuItem<UserRole>(
                               value: r,
@@ -209,13 +226,17 @@ class _AuthScreenState extends State<AuthScreen> {
                           onChanged: _isLoading
                               ? null
                               : (v) {
-                                  if (v != null) setState(() => _selectedRole = v);
+                                  if (v != null) {
+                                    setState(() => _selectedRole = v);
+                                  }
                                 },
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'You can change this later with your organisation.',
-                          style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: AppColors.onSurfaceVariant,
+                          ),
                         ),
                       ],
                       const SizedBox(height: 28),
@@ -248,7 +269,9 @@ class _AuthScreenState extends State<AuthScreen> {
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.onSurface,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          side: const BorderSide(color: AppColors.outlineVariant),
+                          side: const BorderSide(
+                            color: AppColors.outlineVariant,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(24),
                           ),
@@ -267,7 +290,9 @@ class _AuthScreenState extends State<AuthScreen> {
                                 });
                               },
                         child: Text(
-                          _isLogin ? "New here? Create an account" : "Already registered? Log in",
+                          _isLogin
+                              ? "New here? Create an account"
+                              : "Already registered? Log in",
                           style: const TextStyle(color: AppColors.tertiary),
                         ),
                       ),
@@ -295,7 +320,9 @@ class _AuthScreenState extends State<AuthScreen> {
         controller: controller,
         obscureText: isPassword && _obscurePassword,
         keyboardType: keyboardType,
-        style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: AppColors.onSurface),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyLarge?.copyWith(color: AppColors.onSurface),
         decoration: InputDecoration(
           labelText: label,
           labelStyle: const TextStyle(color: AppColors.onSurfaceVariant),
@@ -306,7 +333,8 @@ class _AuthScreenState extends State<AuthScreen> {
                     _obscurePassword ? Icons.visibility_off : Icons.visibility,
                     color: AppColors.onSurfaceVariant,
                   ),
-                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
                 )
               : null,
           border: OutlineInputBorder(

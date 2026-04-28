@@ -164,7 +164,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
                     padding: const EdgeInsets.symmetric(horizontal: 32),
                     scrollDirection: Axis.horizontal,
                     itemCount: state.derivedCrisisAlerts.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 24),
+                    separatorBuilder: (context, index) => const SizedBox(width: 24),
                     itemBuilder: (context, index) => CrisisAlertCard(alert: state.derivedCrisisAlerts[index]),
                   ),
                 ),

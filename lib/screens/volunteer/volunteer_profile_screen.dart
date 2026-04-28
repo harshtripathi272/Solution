@@ -28,7 +28,7 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
     super.initState();
     final appState = context.read<AppState>();
     final user = appState.currentUser;
-    
+
     _nameController = TextEditingController(text: user?.name ?? '');
     _phoneController = TextEditingController(text: user?.phone ?? '');
     _locationController = TextEditingController(text: user?.location ?? '');
@@ -55,7 +55,8 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
     try {
       final appState = context.read<AppState>();
       final user = appState.currentUser;
-      
+      final messenger = ScaffoldMessenger.of(context);
+
       if (user == null) throw Exception("User not loaded");
 
       final updatedUser = AppUser(
@@ -88,7 +89,7 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
           _isAvailable = u.isAvailable;
         }
         setState(() => _isEditing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           const SnackBar(content: Text('Profile updated successfully!')),
         );
       }
@@ -96,7 +97,10 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
       setState(() => _saveError = e.toString());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: AppColors.error),
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
         );
       }
     } finally {
@@ -139,11 +143,13 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
           else
             TextButton(
               onPressed: _isSaving ? null : _saveChanges,
-              child: _isSaving ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ) : const Text('Save'),
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Save'),
             ),
         ],
       ),
@@ -165,7 +171,9 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                         radius: 40,
                         backgroundColor: AppColors.primaryContainer,
                         child: Text(
-                          user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
+                          user.name.isNotEmpty
+                              ? user.name[0].toUpperCase()
+                              : '?',
                           style: const TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
@@ -178,16 +186,24 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(user.name, style: theme.textTheme.headlineSmall),
+                            Text(
+                              user.name,
+                              style: theme.textTheme.headlineSmall,
+                            ),
                             const SizedBox(height: 8),
                             Text(user.email, style: theme.textTheme.bodyMedium),
                             const SizedBox(height: 8),
                             Row(
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: AppColors.success.withValues(alpha: 0.2),
+                                    color: AppColors.success.withValues(
+                                      alpha: 0.2,
+                                    ),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
@@ -195,7 +211,9 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: _isAvailable ? AppColors.success : AppColors.error,
+                                      color: _isAvailable
+                                          ? AppColors.success
+                                          : AppColors.error,
                                     ),
                                   ),
                                 ),
@@ -211,9 +229,18 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildStatTile('Tasks Done', '${appState.completedTasks.length}'),
-                      _buildStatTile('Est. hours', '${appState.completedTasks.length * 2}'),
-                      _buildStatTile('Trust Score', '${user.trustScore.toStringAsFixed(1)}/5'),
+                      _buildStatTile(
+                        'Tasks Done',
+                        '${appState.completedTasks.length}',
+                      ),
+                      _buildStatTile(
+                        'Est. hours',
+                        '${appState.completedTasks.length * 2}',
+                      ),
+                      _buildStatTile(
+                        'Trust Score',
+                        '${user.trustScore.toStringAsFixed(1)}/5',
+                      ),
                     ],
                   ),
                 ],
@@ -225,14 +252,14 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
             if (_isEditing) ...[
               Text('Edit Profile', style: theme.textTheme.headlineSmall),
               const SizedBox(height: 24),
-              
+
               _buildTextField(
                 controller: _nameController,
                 label: 'Full Name',
                 icon: Icons.person,
               ),
               const SizedBox(height: 16),
-              
+
               _buildTextField(
                 controller: _phoneController,
                 label: 'Phone Number',
@@ -240,7 +267,7 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                 keyboardType: TextInputType.phone,
               ),
               const SizedBox(height: 16),
-              
+
               _buildTextField(
                 controller: _locationController,
                 label: 'Location/Area',
@@ -250,16 +277,23 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
 
               // Availability Toggle
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: AppDecorations.contentBlock,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Available for Tasks', style: theme.textTheme.labelLarge),
+                    Text(
+                      'Available for Tasks',
+                      style: theme.textTheme.labelLarge,
+                    ),
                     Switch(
                       value: _isAvailable,
                       activeThumbColor: AppColors.success,
-                      onChanged: (value) => setState(() => _isAvailable = value),
+                      onChanged: (value) =>
+                          setState(() => _isAvailable = value),
                     ),
                   ],
                 ),
@@ -270,7 +304,7 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
             // Skills Section
             Text('Skills', style: theme.textTheme.headlineSmall),
             const SizedBox(height: 16),
-            
+
             if (_isEditing)
               Column(
                 children: [
@@ -284,7 +318,10 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                           ),
                         ),
                       ),
@@ -292,7 +329,10 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                       ElevatedButton(
                         onPressed: _addSkill,
                         style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
                         ),
                         child: const Icon(Icons.add),
                       ),
@@ -311,7 +351,9 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                 ),
                 child: Center(
                   child: Text(
-                    _isEditing ? 'Add skills to get matched with tasks' : 'No skills added yet',
+                    _isEditing
+                        ? 'Add skills to get matched with tasks'
+                        : 'No skills added yet',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: AppColors.onSurfaceVariant,
                     ),
@@ -324,7 +366,10 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                 runSpacing: 8,
                 children: _editingSkills.map((skill) {
                   return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.primaryContainer,
                       borderRadius: BorderRadius.circular(20),
@@ -341,10 +386,15 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                         ),
                         if (_isEditing)
                           GestureDetector(
-                            onTap: () => setState(() => _editingSkills.remove(skill)),
+                            onTap: () =>
+                                setState(() => _editingSkills.remove(skill)),
                             child: const Padding(
                               padding: EdgeInsets.only(left: 8),
-                              child: Icon(Icons.close, size: 16, color: AppColors.onPrimary),
+                              child: Icon(
+                                Icons.close,
+                                size: 16,
+                                color: AppColors.onPrimary,
+                              ),
                             ),
                           ),
                       ],
@@ -385,7 +435,9 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                   const SizedBox(height: 12),
                   Text(
                     'Your location is ephemeral and auto-expires after 2 hours. You can permanently delete it at any time.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -393,37 +445,60 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () => appState.toggleLocationTracking(),
-                          icon: Icon(appState.locationService?.isTracking == true ? Icons.pause : Icons.play_arrow),
-                          label: Text(appState.locationService?.isTracking == true ? 'Pause Sharing' : 'Start Sharing'),
+                          icon: Icon(
+                            appState.locationService?.isTracking == true
+                                ? Icons.pause
+                                : Icons.play_arrow,
+                          ),
+                          label: Text(
+                            appState.locationService?.isTracking == true
+                                ? 'Pause Sharing'
+                                : 'Start Sharing',
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       OutlinedButton.icon(
                         onPressed: () async {
+                          final appState = context.read<AppState>();
+                          final messenger = ScaffoldMessenger.of(context);
                           final confirmed = await showDialog<bool>(
                             context: context,
                             builder: (ctx) => AlertDialog(
                               title: const Text('Delete Location Data'),
-                              content: const Text('This will permanently remove your location from our servers. Continue?'),
+                              content: const Text(
+                                'This will permanently remove your location from our servers. Continue?',
+                              ),
                               actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
+                                ),
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx, true),
-                                  child: const Text('Delete', style: TextStyle(color: AppColors.error)),
+                                  child: const Text(
+                                    'Delete',
+                                    style: TextStyle(color: AppColors.error),
+                                  ),
                                 ),
                               ],
                             ),
                           );
                           if (confirmed == true && mounted) {
-                            await context.read<AppState>().revokeLocation();
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Location data deleted permanently.')),
-                              );
-                            }
+                            await appState.revokeLocation();
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Location data deleted permanently.',
+                                ),
+                              ),
+                            );
                           }
                         },
-                        style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.error,
+                        ),
                         icon: const Icon(Icons.delete_forever),
                         label: const Text('Delete Data'),
                       ),
@@ -440,7 +515,9 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.error.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.error.withValues(alpha: 0.5)),
+                  border: Border.all(
+                    color: AppColors.error.withValues(alpha: 0.5),
+                  ),
                 ),
                 child: Text(
                   'Error: $_saveError',
@@ -467,7 +544,10 @@ class _VolunteerProfileScreenState extends State<VolunteerProfileScreen> {
         labelText: label,
         prefixIcon: Icon(icon),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
       ),
     );
   }

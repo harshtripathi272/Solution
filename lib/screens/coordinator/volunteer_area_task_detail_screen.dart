@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../config/theme.dart';
 import '../../models/task_model.dart';
 
 /// Read-only task detail for coordinators (data from volunteer-area pipeline).

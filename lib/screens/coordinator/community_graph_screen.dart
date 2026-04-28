@@ -44,7 +44,9 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
       if (!mounted) return;
       setState(() {
         _overview = overview;
-        _selectedCommunityId = overview.profiles.isNotEmpty ? overview.profiles.first.id : null;
+        _selectedCommunityId = overview.profiles.isNotEmpty
+            ? overview.profiles.first.id
+            : null;
         _loading = false;
       });
     } catch (e) {
@@ -71,7 +73,11 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
     final profiles = _visibleProfiles;
     if (profiles.isEmpty) return null;
     final selected = _selectedCommunityId;
-    return profiles.where((profile) => profile.id == selected).cast<CommunityProfile?>().firstOrNull ?? profiles.first;
+    return profiles
+            .where((profile) => profile.id == selected)
+            .cast<CommunityProfile?>()
+            .firstOrNull ??
+        profiles.first;
   }
 
   @override
@@ -98,85 +104,98 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? _buildErrorState(theme)
-                : RefreshIndicator(
-                    onRefresh: _loadOverview,
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+            ? _buildErrorState(theme)
+            : RefreshIndicator(
+                onRefresh: _loadOverview,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Visualization toggle
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          // Visualization toggle
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: _buildHero(theme, overview, visibleProfiles),
-                              ),
-                              const SizedBox(width: 16),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: AppColors.outlineVariant),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _visualizationButton(
-                                      icon: Icons.hub,
-                                      label: 'Graph',
-                                      isSelected: !_showHeatmap,
-                                      onPressed: () => setState(() => _showHeatmap = false),
-                                    ),
-                                    _visualizationButton(
-                                      icon: Icons.thermostat,
-                                      label: 'Heatmap',
-                                      isSelected: _showHeatmap,
-                                      onPressed: () => setState(() => _showHeatmap = true),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          Expanded(
+                            child: _buildHero(theme, overview, visibleProfiles),
                           ),
-                          const SizedBox(height: 20),
-                          _buildTimeSlider(theme),
-                          const SizedBox(height: 20),
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final wide = constraints.maxWidth >= 1100;
-                              final graph = _buildGraphPanel(theme, visibleProfiles);
-                              final matrix = _buildMatrixPanel(theme, visibleProfiles);
-                              if (wide) {
-                                return Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(flex: 3, child: graph),
-                                    const SizedBox(width: 20),
-                                    Expanded(flex: 2, child: matrix),
-                                  ],
-                                );
-                              }
-
-                              return Column(
-                                children: [
-                                  graph,
-                                  const SizedBox(height: 20),
-                                  matrix,
-                                ],
-                              );
-                            },
+                          const SizedBox(width: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: AppColors.outlineVariant,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _visualizationButton(
+                                  icon: Icons.hub,
+                                  label: 'Graph',
+                                  isSelected: !_showHeatmap,
+                                  onPressed: () =>
+                                      setState(() => _showHeatmap = false),
+                                ),
+                                _visualizationButton(
+                                  icon: Icons.thermostat,
+                                  label: 'Heatmap',
+                                  isSelected: _showHeatmap,
+                                  onPressed: () =>
+                                      setState(() => _showHeatmap = true),
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 20),
-                          _buildSelectedCommunityCard(theme),
-                          const SizedBox(height: 20),
-                          _buildCommunityList(theme),
                         ],
                       ),
-                    ),
+                      const SizedBox(height: 20),
+                      _buildTimeSlider(theme),
+                      const SizedBox(height: 20),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final wide = constraints.maxWidth >= 1100;
+                          final graph = _buildGraphPanel(
+                            theme,
+                            visibleProfiles,
+                          );
+                          final matrix = _buildMatrixPanel(
+                            theme,
+                            visibleProfiles,
+                          );
+                          if (wide) {
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(flex: 3, child: graph),
+                                const SizedBox(width: 20),
+                                Expanded(flex: 2, child: matrix),
+                              ],
+                            );
+                          }
+
+                          return Column(
+                            children: [
+                              graph,
+                              const SizedBox(height: 20),
+                              matrix,
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      _buildSelectedCommunityCard(theme),
+                      const SizedBox(height: 20),
+                      _buildCommunityList(theme),
+                    ],
                   ),
+                ),
+              ),
       ),
     );
   }
@@ -191,7 +210,9 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
     return Padding(
       padding: const EdgeInsets.all(4),
       child: Material(
-        color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
+        color: isSelected
+            ? AppColors.primary.withValues(alpha: 0.15)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: onPressed,
@@ -201,13 +222,23 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 16, color: isSelected ? AppColors.primary : AppColors.outlineVariant),
+                Icon(
+                  icon,
+                  size: 16,
+                  color: isSelected
+                      ? AppColors.primary
+                      : AppColors.outlineVariant,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   label,
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: isSelected ? AppColors.primary : AppColors.outlineVariant,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.outlineVariant,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
                 ),
               ],
@@ -250,53 +281,89 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Community graph unavailable', style: theme.textTheme.headlineSmall),
+            Text(
+              'Community graph unavailable',
+              style: theme.textTheme.headlineSmall,
+            ),
             const SizedBox(height: 12),
-            Text(_error ?? 'Unknown error', textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+            Text(
+              _error ?? 'Unknown error',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
             const SizedBox(height: 20),
-            ElevatedButton(onPressed: _loadOverview, child: const Text('Retry')),
+            ElevatedButton(
+              onPressed: _loadOverview,
+              child: const Text('Retry'),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHero(ThemeData theme, CommunityGraphOverview? overview, List<CommunityProfile> visibleProfiles) {
-    final totalNeeds = visibleProfiles.fold<int>(0, (sum, profile) => sum + profile.needs.length);
-    final staleCount = visibleProfiles.where((profile) => profile.isStale).length;
+  Widget _buildHero(
+    ThemeData theme,
+    CommunityGraphOverview? overview,
+    List<CommunityProfile> visibleProfiles,
+  ) {
+    final totalNeeds = visibleProfiles.fold<int>(
+      0,
+      (sum, profile) => sum + profile.needs.length,
+    );
+    final staleCount = visibleProfiles
+        .where((profile) => profile.isStale)
+        .length;
     final gapCount = overview?.coverageGaps.length ?? 0;
 
     return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: AppDecorations.baseCard.copyWith(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF07112f), Color(0xFF10284d), Color(0xFF193a32)],
-          stops: [0.0, 0.55, 1.0],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Community intelligence network', style: theme.textTheme.bodyLarge?.copyWith(color: Colors.white70)),
-          const SizedBox(height: 8),
-          Text('Constellation map, need matrix, and freshness trail',
-              style: theme.textTheme.displaySmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
+          padding: const EdgeInsets.all(24),
+          decoration: AppDecorations.baseCard.copyWith(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF07112f), Color(0xFF10284d), Color(0xFF193a32)],
+              stops: [0.0, 0.55, 1.0],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _metricChip('Communities', '${visibleProfiles.length}', Colors.white),
-              _metricChip('Need signals', '$totalNeeds', Colors.white),
-              _metricChip('Coverage gaps', '$gapCount', Colors.white),
-              _metricChip('Stale communities', '$staleCount', Colors.white),
+              Text(
+                'Community intelligence network',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: Colors.white70,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Constellation map, need matrix, and freshness trail',
+                style: theme.textTheme.displaySmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _metricChip(
+                    'Communities',
+                    '${visibleProfiles.length}',
+                    Colors.white,
+                  ),
+                  _metricChip('Need signals', '$totalNeeds', Colors.white),
+                  _metricChip('Coverage gaps', '$gapCount', Colors.white),
+                  _metricChip('Stale communities', '$staleCount', Colors.white),
+                ],
+              ),
             ],
           ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
+        )
+        .animate()
+        .fadeIn(duration: 400.ms)
+        .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
   }
 
   Widget _metricChip(String label, String value, Color color) {
@@ -310,7 +377,10 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w800)),
+          Text(
+            value,
+            style: TextStyle(color: color, fontWeight: FontWeight.w800),
+          ),
           const SizedBox(width: 8),
           Text(label, style: const TextStyle(color: Colors.white70)),
         ],
@@ -320,44 +390,58 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
 
   Widget _buildTimeSlider(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: AppDecorations.baseCard,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          padding: const EdgeInsets.all(20),
+          decoration: AppDecorations.baseCard,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Temporal validity', style: theme.textTheme.titleLarge),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: AppDecorations.activeChip,
-                child: Text('${_timeWindowDays.round()} days', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.primary)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Temporal validity', style: theme.textTheme.titleLarge),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: AppDecorations.activeChip,
+                    child: Text(
+                      '${_timeWindowDays.round()} days',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Stale links fade after six months of inactivity. Slide to narrow the network to recent evidence.',
+                style: theme.textTheme.bodyMedium,
+              ),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: AppColors.primary,
+                  inactiveTrackColor: AppColors.surfaceContainerHigh,
+                  thumbColor: AppColors.secondary,
+                  overlayColor: AppColors.secondary.withValues(alpha: 0.16),
+                ),
+                child: Slider(
+                  value: _timeWindowDays,
+                  min: 30,
+                  max: 365,
+                  divisions: 11,
+                  label: '${_timeWindowDays.round()} days',
+                  onChanged: (value) =>
+                      setState(() => _timeWindowDays = value.roundToDouble()),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text('Stale links fade after six months of inactivity. Slide to narrow the network to recent evidence.',
-              style: theme.textTheme.bodyMedium),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: AppColors.primary,
-              inactiveTrackColor: AppColors.surfaceContainerHigh,
-              thumbColor: AppColors.secondary,
-              overlayColor: AppColors.secondary.withValues(alpha: 0.16),
-            ),
-            child: Slider(
-              value: _timeWindowDays,
-              min: 30,
-              max: 365,
-              divisions: 11,
-              label: '${_timeWindowDays.round()} days',
-              onChanged: (value) => setState(() => _timeWindowDays = value.roundToDouble()),
-            ),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(delay: 120.ms).slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
+        )
+        .animate()
+        .fadeIn(delay: 120.ms)
+        .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
   }
 
   Widget _buildGraphPanel(ThemeData theme, List<CommunityProfile> profiles) {
@@ -369,11 +453,24 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
         children: [
           Row(
             children: [
-              Expanded(child: Text('Constellation map', style: theme.textTheme.headlineSmall)),
+              Expanded(
+                child: Text(
+                  'Constellation map',
+                  style: theme.textTheme.headlineSmall,
+                ),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: AppDecorations.activeChip,
-                child: Text('force-directed', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.primary)),
+                child: Text(
+                  'force-directed',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: AppColors.primary,
+                  ),
+                ),
               ),
             ],
           ),
@@ -383,7 +480,8 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
             child: _ForceGraphView(
               profiles: profiles,
               selectedCommunityId: _selectedCommunityId,
-              onSelectCommunity: (communityId) => setState(() => _selectedCommunityId = communityId),
+              onSelectCommunity: (communityId) =>
+                  setState(() => _selectedCommunityId = communityId),
             ),
           ),
           const SizedBox(height: 12),
@@ -434,7 +532,10 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
         children: [
           Text('Vulnerability matrix', style: theme.textTheme.headlineSmall),
           const SizedBox(height: 12),
-          Text('Villages against nutrition, water, health, and infrastructure severity.', style: theme.textTheme.bodyMedium),
+          Text(
+            'Villages against nutrition, water, health, and infrastructure severity.',
+            style: theme.textTheme.bodyMedium,
+          ),
           const SizedBox(height: 16),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -447,14 +548,25 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                       (category) => SizedBox(
                         width: 88,
                         child: Padding(
-                          padding: const EdgeInsets.only(left: 6, right: 6, bottom: 12),
-                          child: Text(category.$2, textAlign: TextAlign.center, style: theme.textTheme.labelLarge),
+                          padding: const EdgeInsets.only(
+                            left: 6,
+                            right: 6,
+                            bottom: 12,
+                          ),
+                          child: Text(
+                            category.$2,
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.labelLarge,
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                ...profiles.map((profile) => _MatrixRow(profile: profile, categories: categories)),
+                ...profiles.map(
+                  (profile) =>
+                      _MatrixRow(profile: profile, categories: categories),
+                ),
               ],
             ),
           ),
@@ -472,10 +584,14 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: labels.map((label) => Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: Text('• $label', style: theme.textTheme.bodySmall),
-      )).toList(),
+      children: labels
+          .map(
+            (label) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('• $label', style: theme.textTheme.bodySmall),
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -486,7 +602,9 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
     }
 
     final needs = profile.needs.take(4).toList();
-    final reportUrl = (profile.report['url'] ?? profile.provenance['source_url'] ?? '').toString();
+    final reportUrl =
+        (profile.report['url'] ?? profile.provenance['source_url'] ?? '')
+            .toString();
     final stale = profile.isStale;
 
     return Container(
@@ -503,22 +621,42 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                   children: [
                     Text(profile.name, style: theme.textTheme.headlineSmall),
                     const SizedBox(height: 4),
-                    Text('${profile.region}, ${profile.district} · ${profile.block}', style: theme.textTheme.bodyMedium),
+                    Text(
+                      '${profile.region}, ${profile.district} · ${profile.block}',
+                      style: theme.textTheme.bodyMedium,
+                    ),
                   ],
                 ),
               ),
               if (stale)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(color: AppColors.error.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
-                  child: Text('stale', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.error)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'stale',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: AppColors.error,
+                    ),
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: 12),
-          Text('Active organizations: ${profile.activeOrganizationsLabel}', style: theme.textTheme.bodyMedium),
+          Text(
+            'Active organizations: ${profile.activeOrganizationsLabel}',
+            style: theme.textTheme.bodyMedium,
+          ),
           const SizedBox(height: 8),
-          Text('Last verified: ${profile.lastVerifiedLabel}', style: theme.textTheme.bodyMedium),
+          Text(
+            'Last verified: ${profile.lastVerifiedLabel}',
+            style: theme.textTheme.bodyMedium,
+          ),
           const SizedBox(height: 16),
           Wrap(
             spacing: 10,
@@ -526,14 +664,19 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
             children: needs
                 .map(
                   (need) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: _needColor(need.needType).withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: Text(
                       '${_humanizeNeed(need.needType)} ${(need.chronicScore * 100).round()}%',
-                      style: theme.textTheme.labelLarge?.copyWith(color: _needColor(need.needType)),
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: _needColor(need.needType),
+                      ),
                     ),
                   ),
                 )
@@ -543,7 +686,9 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
           Row(
             children: [
               TextButton.icon(
-                onPressed: reportUrl.isEmpty ? null : () => _openLink(reportUrl),
+                onPressed: reportUrl.isEmpty
+                    ? null
+                    : () => _openLink(reportUrl),
                 icon: const Icon(Icons.picture_as_pdf),
                 label: const Text('Source PDF'),
               ),
@@ -560,7 +705,12 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
             const SizedBox(height: 12),
             Text('Knowledge gaps', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
-            ...profile.coverageGaps.map((gap) => Text('• ${gap['reason'] ?? gap['community_name']}', style: theme.textTheme.bodyMedium)),
+            ...profile.coverageGaps.map(
+              (gap) => Text(
+                '• ${gap['reason'] ?? gap['community_name']}',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
           ],
         ],
       ),
@@ -599,9 +749,17 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  Text('Coordination Notes', style: theme.textTheme.headlineSmall),
+                  Text(
+                    'Coordination Notes',
+                    style: theme.textTheme.headlineSmall,
+                  ),
                   const SizedBox(height: 8),
-                  Text(profile.name, style: theme.textTheme.titleMedium?.copyWith(color: AppColors.onSurfaceVariant)),
+                  Text(
+                    profile.name,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: AppColors.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 24),
                   ...profile.coordinationOpportunities.map((opp) {
                     return Container(
@@ -612,17 +770,30 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (opp['type'] != null)
-                            Text(opp['type'].toString().toUpperCase(),
-                              style: theme.textTheme.labelLarge?.copyWith(color: AppColors.primary)),
-                          if (opp['description'] != null || opp['reason'] != null) ...[
+                            Text(
+                              opp['type'].toString().toUpperCase(),
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          if (opp['description'] != null ||
+                              opp['reason'] != null) ...[
                             const SizedBox(height: 8),
-                            Text(opp['description']?.toString() ?? opp['reason']?.toString() ?? '',
-                              style: theme.textTheme.bodyMedium),
+                            Text(
+                              opp['description']?.toString() ??
+                                  opp['reason']?.toString() ??
+                                  '',
+                              style: theme.textTheme.bodyMedium,
+                            ),
                           ],
                           if (opp['communities'] != null) ...[
                             const SizedBox(height: 8),
-                            Text('Communities: ${(opp['communities'] as List).join(', ')}',
-                              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant)),
+                            Text(
+                              'Communities: ${(opp['communities'] as List).join(', ')}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: AppColors.onSurfaceVariant,
+                              ),
+                            ),
                           ],
                         ],
                       ),
@@ -630,26 +801,42 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                   }),
                   if (profile.similarity.isNotEmpty) ...[
                     const SizedBox(height: 24),
-                    Text('Similar Communities', style: theme.textTheme.titleMedium),
+                    Text(
+                      'Similar Communities',
+                      style: theme.textTheme.titleMedium,
+                    ),
                     const SizedBox(height: 12),
-                    ...profile.similarity.map((sim) => Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: AppDecorations.contentBlock,
-                      child: Row(
-                        children: [
-                          Icon(Icons.hub, size: 16, color: AppColors.primary),
-                          const SizedBox(width: 12),
-                          Expanded(child: Text(
-                            sim['community_name']?.toString() ?? sim['id']?.toString() ?? 'Unknown',
-                            style: theme.textTheme.bodyMedium,
-                          )),
-                          if (sim['score'] != null)
-                            Text('${((sim['score'] as num).toDouble() * 100).round()}% similar',
-                              style: theme.textTheme.labelMedium?.copyWith(color: AppColors.onSurfaceVariant)),
-                        ],
+                    ...profile.similarity.map(
+                      (sim) => Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: AppDecorations.contentBlock,
+                        child: Row(
+                          children: [
+                            Icon(Icons.hub, size: 16, color: AppColors.primary),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                sim['community_name']?.toString() ??
+                                    sim['id']?.toString() ??
+                                    'Unknown',
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                            ),
+                            if (sim['score'] != null)
+                              Text(
+                                '${((sim['score'] as num).toDouble() * 100).round()}% similar',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: AppColors.onSurfaceVariant,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                    )),
+                    ),
                   ],
                 ],
               ),
@@ -688,13 +875,18 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: selected ? AppColors.primary : AppColors.outlineVariant.withValues(alpha: 0.3), width: selected ? 1.5 : 1),
+                  border: Border.all(
+                    color: selected
+                        ? AppColors.primary
+                        : AppColors.outlineVariant.withValues(alpha: 0.3),
+                    width: selected ? 1.5 : 1,
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
-                    )
+                    ),
                   ],
                 ),
                 child: Padding(
@@ -708,31 +900,53 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(profile.name, style: theme.textTheme.titleLarge),
+                                Text(
+                                  profile.name,
+                                  style: theme.textTheme.titleLarge,
+                                ),
                                 const SizedBox(height: 4),
-                                Text(profile.lastVerifiedLabel, style: theme.textTheme.bodyMedium),
+                                Text(
+                                  profile.lastVerifiedLabel,
+                                  style: theme.textTheme.bodyMedium,
+                                ),
                               ],
                             ),
                           ),
-                          Icon(Icons.chevron_right, color: selected ? AppColors.primary : AppColors.outlineVariant),
+                          Icon(
+                            Icons.chevron_right,
+                            color: selected
+                                ? AppColors.primary
+                                : AppColors.outlineVariant,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
-                      Text('Organizations: ${profile.activeOrganizationsLabel}', style: theme.textTheme.bodyMedium),
+                      Text(
+                        'Organizations: ${profile.activeOrganizationsLabel}',
+                        style: theme.textTheme.bodyMedium,
+                      ),
                       const SizedBox(height: 10),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: profile.needs.take(3).map((need) {
-                           final needName = _humanizeNeed(need.needType);
-                           return Container(
-                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                             decoration: BoxDecoration(
-                               color: AppColors.primary.withValues(alpha: 0.08),
-                               borderRadius: BorderRadius.circular(12),
-                             ),
-                             child: Text(needName, style: theme.textTheme.labelMedium?.copyWith(color: AppColors.primary)),
-                           );
+                          final needName = _humanizeNeed(need.needType);
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              needName,
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          );
                         }).toList(),
                       ),
                     ],
@@ -789,34 +1003,39 @@ class _MatrixRow extends StatelessWidget {
             width: 150,
             child: Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: Text(profile.name, style: theme.textTheme.bodyMedium, maxLines: 2, overflow: TextOverflow.ellipsis),
+              child: Text(
+                profile.name,
+                style: theme.textTheme.bodyMedium,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
-          ...categories.map(
-            (category) {
-              final severity = _severityFor(category.$1);
-              final opacity = profile.isStale ? 0.32 : 0.18 + (severity * 0.78);
-              return Container(
-                width: 88,
-                height: 42,
-                margin: const EdgeInsets.symmetric(horizontal: 6),
-                decoration: BoxDecoration(
-                  color: _colorFor(category.$1).withValues(alpha: opacity.clamp(0.0, 1.0)),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.surfaceContainerHigh),
-                ),
-                child: Center(
-                  child: Text(
-                    '${(severity * 100).round()}%',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: severity > 0.55 ? Colors.white : AppColors.onSurface,
-                      fontWeight: FontWeight.w700,
-                    ),
+          ...categories.map((category) {
+            final severity = _severityFor(category.$1);
+            final opacity = profile.isStale ? 0.32 : 0.18 + (severity * 0.78);
+            return Container(
+              width: 88,
+              height: 42,
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: BoxDecoration(
+                color: _colorFor(
+                  category.$1,
+                ).withValues(alpha: opacity.clamp(0.0, 1.0)),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.surfaceContainerHigh),
+              ),
+              child: Center(
+                child: Text(
+                  '${(severity * 100).round()}%',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: severity > 0.55 ? Colors.white : AppColors.onSurface,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -878,7 +1097,8 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
   @override
   void didUpdateWidget(covariant _ForceGraphView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.profiles != widget.profiles || oldWidget.selectedCommunityId != widget.selectedCommunityId) {
+    if (oldWidget.profiles != widget.profiles ||
+        oldWidget.selectedCommunityId != widget.selectedCommunityId) {
       _rebuildNodes();
     }
   }
@@ -893,12 +1113,15 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
     }
 
     final widthIndex = profiles.length.clamp(1, 12);
-    
+
     // Create community nodes anchored to their geographic positions
     final communityNodes = <String, _GraphNode>{};
     for (var index = 0; index < profiles.length; index++) {
       final profile = profiles[index];
-      final normalizedX = ((profile.longitude + 180.0) / 360.0).clamp(0.10, 0.90);
+      final normalizedX = ((profile.longitude + 180.0) / 360.0).clamp(
+        0.10,
+        0.90,
+      );
       final normalizedY = ((90.0 - profile.latitude) / 180.0).clamp(0.10, 0.90);
       final base = Offset(normalizedX, normalizedY);
       final communityNode = _GraphNode(
@@ -919,42 +1142,57 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
     for (var index = 0; index < profiles.length; index++) {
       final profile = profiles[index];
       final communityNode = communityNodes[profile.id]!;
-      
+
       final ngos = [
-        if (profile.ngo.isNotEmpty) profile.ngo['name']?.toString() ?? profile.ngo['id']?.toString() ?? 'NGO',
+        if (profile.ngo.isNotEmpty)
+          profile.ngo['name']?.toString() ??
+              profile.ngo['id']?.toString() ??
+              'NGO',
         ...profile.targetNgos.take(2),
       ].where((value) => value.trim().isNotEmpty).toList();
 
       // Create NGO nodes positioned in a circle around the community
       for (var ngoIndex = 0; ngoIndex < ngos.length; ngoIndex++) {
         final angle = (ngoIndex / math.max(1, ngos.length)) * math.pi * 2.0;
-        final offset = Offset(math.cos(angle) * 0.10, math.sin(angle) * 0.10); // Larger offset for better visibility
+        final offset = Offset(
+          math.cos(angle) * 0.10,
+          math.sin(angle) * 0.10,
+        ); // Larger offset for better visibility
         final nodeId = '${profile.id}:ngo:$ngoIndex';
         final ngoNode = _GraphNode(
           id: nodeId,
           label: ngos[ngoIndex],
           kind: _GraphNodeKind.ngo,
           color: _ngoColor(ngoIndex),
-          position: (communityNode.position + offset).clamp(const Offset(0.05, 0.05), const Offset(0.95, 0.95)),
+          position: (communityNode.position + offset).clamp(
+            const Offset(0.05, 0.05),
+            const Offset(0.95, 0.95),
+          ),
           radius: 0.024,
           metadata: profile,
-          anchor: communityNode.position + offset, // Anchor NGO relative to community
+          anchor:
+              communityNode.position +
+              offset, // Anchor NGO relative to community
         );
         nodes.add(ngoNode);
 
         // Create strong edges between communities and NGOs
-        final edgeNeed = profile.needs.isNotEmpty ? profile.needs[ngoIndex % profile.needs.length] : null;
+        final edgeNeed = profile.needs.isNotEmpty
+            ? profile.needs[ngoIndex % profile.needs.length]
+            : null;
         edges.add(
           _GraphEdge(
             from: profile.id,
             to: nodeId,
-            color: edgeNeed == null ? AppColors.outlineVariant : _needColor(edgeNeed.needType),
+            color: edgeNeed == null
+                ? AppColors.outlineVariant
+                : _needColor(edgeNeed.needType),
             opacity: profile.isStale ? 0.30 : 0.85,
             strength: 0.15, // Stronger spring force
           ),
         );
       }
-      
+
       // Add edges between nearby communities (similarity-based)
       if (profile.similarity.isNotEmpty) {
         for (var sim in profile.similarity.take(2)) {
@@ -995,69 +1233,84 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
           width: width,
           height: height,
           child: Stack(
-          children: [
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _GraphEdgePainter(nodes: _nodes, edges: _edges),
+            children: [
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _GraphEdgePainter(nodes: _nodes, edges: _edges),
+                ),
               ),
-            ),
-            ..._nodes.map((node) {
-              final x = node.position.dx * width;
-              final y = node.position.dy * height;
-              final selected = node.kind == _GraphNodeKind.community && node.id == widget.selectedCommunityId;
-              return Positioned(
-                left: x - (node.radius * width),
-                top: y - (node.radius * height),
-                child: GestureDetector(
-                  onTap: () {
-                    if (node.kind == _GraphNodeKind.community) {
-                      widget.onSelectCommunity(node.id);
-                      final raw = node.metadata;
-                      if (raw is CommunityProfile) {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => CommunityDetailScreen(profile: raw),
-                          ),
-                        );
+              ..._nodes.map((node) {
+                final x = node.position.dx * width;
+                final y = node.position.dy * height;
+                final selected =
+                    node.kind == _GraphNodeKind.community &&
+                    node.id == widget.selectedCommunityId;
+                return Positioned(
+                  left: x - (node.radius * width),
+                  top: y - (node.radius * height),
+                  child: GestureDetector(
+                    onTap: () {
+                      if (node.kind == _GraphNodeKind.community) {
+                        widget.onSelectCommunity(node.id);
+                        final raw = node.metadata;
+                        if (raw is CommunityProfile) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  CommunityDetailScreen(profile: raw),
+                            ),
+                          );
+                        }
                       }
-                    }
-                  },
-                  child: AnimatedContainer(
-                    duration: 240.ms,
-                    width: node.radius * width * 2,
-                    height: node.radius * height * 2,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: node.color.withValues(alpha: selected ? 1.0 : (node.kind == _GraphNodeKind.ngo ? 0.86 : 0.92)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: node.color.withValues(alpha: 0.18),
-                          blurRadius: selected ? 24 : 16,
-                          offset: const Offset(0, 10),
+                    },
+                    child: AnimatedContainer(
+                      duration: 240.ms,
+                      width: node.radius * width * 2,
+                      height: node.radius * height * 2,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: node.color.withValues(
+                          alpha: selected
+                              ? 1.0
+                              : (node.kind == _GraphNodeKind.ngo ? 0.86 : 0.92),
                         ),
-                      ],
-                      border: Border.all(color: selected ? Colors.white : Colors.white.withValues(alpha: 0.16), width: 1.5),
-                    ),
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Text(
-                          node.kind == _GraphNodeKind.community ? node.label : _shortLabel(node.label),
-                          textAlign: TextAlign.center,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                              ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: node.color.withValues(alpha: 0.18),
+                            blurRadius: selected ? 24 : 16,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                        border: Border.all(
+                          color: selected
+                              ? Colors.white
+                              : Colors.white.withValues(alpha: 0.16),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Text(
+                            node.kind == _GraphNodeKind.community
+                                ? node.label
+                                : _shortLabel(node.label),
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              );
-            }),
-          ],
-        ),
+                );
+              }),
+            ],
+          ),
         );
 
         return InteractiveViewer(
@@ -1075,7 +1328,10 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
 
     final rng = math.Random(13);
     for (final node in nodes) {
-      node.velocity = Offset((rng.nextDouble() - 0.5) * 0.008, (rng.nextDouble() - 0.5) * 0.008);
+      node.velocity = Offset(
+        (rng.nextDouble() - 0.5) * 0.008,
+        (rng.nextDouble() - 0.5) * 0.008,
+      );
     }
 
     for (var iteration = 0; iteration < iterations * 15; iteration++) {
@@ -1095,8 +1351,14 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
 
       // Attractive forces along edges (springs)
       for (final edge in edges) {
-        final source = nodes.firstWhere((node) => node.id == edge.from, orElse: () => nodes.first);
-        final target = nodes.firstWhere((node) => node.id == edge.to, orElse: () => nodes.first);
+        final source = nodes.firstWhere(
+          (node) => node.id == edge.from,
+          orElse: () => nodes.first,
+        );
+        final target = nodes.firstWhere(
+          (node) => node.id == edge.to,
+          orElse: () => nodes.first,
+        );
         final delta = target.position - source.position;
         final distance = math.max(0.01, delta.distance);
         final spring = (distance - 0.10) * (edge.strength ?? 0.10);
@@ -1117,8 +1379,11 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
           final pull = (anchor - node.position) * 0.04;
           node.velocity += pull;
         }
-        
-        node.position = (node.position + node.velocity).clamp(const Offset(0.03, 0.03), const Offset(0.97, 0.97));
+
+        node.position = (node.position + node.velocity).clamp(
+          const Offset(0.03, 0.03),
+          const Offset(0.97, 0.97),
+        );
         node.velocity *= 0.82; // Damping to stabilize layout
       }
     }
@@ -1142,7 +1407,12 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
   }
 
   Color _ngoColor(int index) {
-    const colors = [Color(0xFF0f766e), Color(0xFF7c3aed), Color(0xFFb45309), Color(0xFF1d4ed8)];
+    const colors = [
+      Color(0xFF0f766e),
+      Color(0xFF7c3aed),
+      Color(0xFFb45309),
+      Color(0xFF1d4ed8),
+    ];
     return colors[index % colors.length];
   }
 
@@ -1150,7 +1420,7 @@ class _ForceGraphViewState extends State<_ForceGraphView> {
     if (value.length <= 14) {
       return value;
     }
-    return value.substring(0, 11).trimRight() + '…';
+    return '${value.substring(0, 11).trimRight()}…';
   }
 }
 
@@ -1209,11 +1479,23 @@ class _GraphEdgePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     for (final edge in edges) {
-      final source = nodes.firstWhere((node) => node.id == edge.from, orElse: () => nodes.first);
-      final target = nodes.firstWhere((node) => node.id == edge.to, orElse: () => nodes.first);
+      final source = nodes.firstWhere(
+        (node) => node.id == edge.from,
+        orElse: () => nodes.first,
+      );
+      final target = nodes.firstWhere(
+        (node) => node.id == edge.to,
+        orElse: () => nodes.first,
+      );
       paint.color = edge.color.withValues(alpha: edge.opacity);
-      final p1 = Offset(source.position.dx * size.width, source.position.dy * size.height);
-      final p2 = Offset(target.position.dx * size.width, target.position.dy * size.height);
+      final p1 = Offset(
+        source.position.dx * size.width,
+        source.position.dy * size.height,
+      );
+      final p2 = Offset(
+        target.position.dx * size.width,
+        target.position.dy * size.height,
+      );
       final path = Path()
         ..moveTo(p1.dx, p1.dy)
         ..quadraticBezierTo(
@@ -1227,11 +1509,15 @@ class _GraphEdgePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _GraphEdgePainter oldDelegate) => oldDelegate.nodes != nodes;
+  bool shouldRepaint(covariant _GraphEdgePainter oldDelegate) =>
+      oldDelegate.nodes != nodes;
 }
 
 extension _OffsetClamp on Offset {
-  Offset clamp(Offset min, Offset max) => Offset(dx.clamp(min.dx, max.dx).toDouble(), dy.clamp(min.dy, max.dy).toDouble());
+  Offset clamp(Offset min, Offset max) => Offset(
+    dx.clamp(min.dx, max.dx).toDouble(),
+    dy.clamp(min.dy, max.dy).toDouble(),
+  );
 }
 
 extension _IterableFirstOrNull<T> on Iterable<T> {
