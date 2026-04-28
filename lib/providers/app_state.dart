@@ -46,8 +46,51 @@ class AppState extends ChangeNotifier {
     }
     return const [];
   }
-      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/v1/tasks')
-          .replace(queryParameters: queryParams);
+
+  /// Map backend register/profile payload onto the local AppUser + role state.
+  void _applyRegisterPayload(Map<String, dynamic> data, User firebaseUser) {
+    UserRole mappedRole = UserRole.volunteer;
+    final roleStr = data['role']?.toString();
+    if (roleStr == 'coordinator') mappedRole = UserRole.coordinator;
+    if (roleStr == 'ngo_worker') mappedRole = UserRole.ngoWorker;
+
+    _currentRole = mappedRole;
+    const trustDisplay = 4.0;
+    _currentUser = AppUser(
+      id: data['uid']?.toString() ?? firebaseUser.uid,
+      name: (data['name'] ?? firebaseUser.displayName ?? 'User').toString(),
+      email: (data['email'] ?? firebaseUser.email ?? '').toString(),
+      role: mappedRole,
+      ngoId: data['organization_id']?.toString(),
+      phone: data['phone']?.toString(),
+      skills: _parseSkills(data['skills']),
+      location: data['location']?.toString(),
+      isAvailable: data['is_available'] ?? true,
+      createdAt: _parseBackendDate(data['created_at']),
+      trustScore: trustDisplay,
+    );
+  }
+
+  /// Re-pull profile from backend (used after edits to sync local copy).
+  Future<bool> refreshProfileFromServer() async {
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    if (firebaseUser == null || _apiClient == null) return false;
+    try {
+      final response = await _apiClient!.post('/api/v1/auth/register', {});
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      _applyRegisterPayload(data, firebaseUser);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('[AppState] refreshProfileFromServer: $e');
+      return false;
+    }
+  }
+
+  /// Refresh the historical/volunteer-area task feed from the backend.
+  Future<void> refreshHistoricalTasks({
+    double? latitude,
     double? longitude,
     double radiusKm = 30.0,
     int limit = 20,
@@ -100,7 +143,7 @@ class AppState extends ChangeNotifier {
   void setRequestedRole(UserRole role) {
     _requestedRole = role;
   }
-          id: reportId,
+
   // Getters
   UserRole get currentRole => _currentRole;
   AppUser? get currentUser => _currentUser;
