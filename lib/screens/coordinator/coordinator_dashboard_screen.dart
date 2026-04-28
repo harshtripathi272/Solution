@@ -70,6 +70,27 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_loading) const Padding(
+                padding: EdgeInsets.fromLTRB(32, 0, 32, 0),
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(32, 8, 32, 0),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
+                    ),
+                    child: Text(
+                      'Could not refresh community snapshots: $_error',
+                      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.error),
+                    ),
+                  ),
+                ),
               // Header
               Padding(
                 padding: const EdgeInsets.fromLTRB(32, 48, 32, 16),
@@ -104,11 +125,11 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
                     const SizedBox(width: 16),
                     Expanded(
                       child: StatCard(
-                        title: 'Available Volunteers',
-                        value: '${state.volunteers.where((v) => v.isAvailable).length}',
+                        title: 'Active Tasks',
+                        value: '${state.activeTasks.length}',
                         icon: Icons.people,
                         color: AppColors.primary,
-                        subtitle: '${state.volunteers.length} total registered',
+                        subtitle: '${state.completedTasks.length} completed',
                       ),
                     ),
                   ],
@@ -117,18 +138,18 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
               
               const SizedBox(height: 48),
               
-              // Crisis Alerts
-              if (state.crisisAlerts.isNotEmpty) ...[
+              // Crisis Alerts (derived from critical tasks)
+              if (state.derivedCrisisAlerts.isNotEmpty) ...[
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: Row(
                     children: [
-                      Text('Predictive Alerts', style: theme.textTheme.headlineLarge),
+                      Text('Critical Alerts', style: theme.textTheme.headlineLarge),
                       const SizedBox(width: 16),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(color: AppColors.error.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
-                        child: Text('${state.crisisAlerts.length} Active', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.error)),
+                        child: Text('${state.derivedCrisisAlerts.length} Active', style: theme.textTheme.labelLarge?.copyWith(color: AppColors.error)),
                       ),
                     ],
                   ),
@@ -139,9 +160,9 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
                   child: ListView.separated(
                     padding: const EdgeInsets.symmetric(horizontal: 32),
                     scrollDirection: Axis.horizontal,
-                    itemCount: state.crisisAlerts.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 24),
-                    itemBuilder: (context, index) => CrisisAlertCard(alert: state.crisisAlerts[index]),
+                    itemCount: state.derivedCrisisAlerts.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 24),
+                    itemBuilder: (context, index) => CrisisAlertCard(alert: state.derivedCrisisAlerts[index]),
                   ),
                 ),
                 const SizedBox(height: 64),

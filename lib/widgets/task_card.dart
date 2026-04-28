@@ -51,10 +51,50 @@ class TaskCard extends StatelessWidget {
                 decoration: BoxDecoration(color: sc.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
                 child: Text(task.status.name.toUpperCase(), style: theme.textTheme.labelLarge?.copyWith(color: sc, fontSize: 12)),
               ),
+              // Match score badge
+              if (task.matchScore != null && task.matchScore! > 0) ...[
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.auto_awesome, size: 14, color: AppColors.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${(task.matchScore! * 100).round()}%',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: AppColors.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const Spacer(),
+              if (task.distanceKm != null) ...[
+                Icon(Icons.straighten, size: 16, color: AppColors.outlineVariant),
+                const SizedBox(width: 4),
+                Text(
+                  '${task.distanceKm!.toStringAsFixed(1)} km',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: AppColors.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
               Icon(Icons.location_on, size: 16, color: AppColors.outlineVariant),
               const SizedBox(width: 4),
-              Text(task.ward, style: theme.textTheme.bodyMedium),
+              Flexible(
+                child: Text(task.ward, style: theme.textTheme.bodyMedium, overflow: TextOverflow.ellipsis),
+              ),
             ]),
             const SizedBox(height: 20),
             Text(task.title, style: theme.textTheme.headlineSmall),
@@ -67,12 +107,25 @@ class TaskCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text('${task.estimatedPeopleAffected} people', style: theme.textTheme.bodyMedium),
               const SizedBox(width: 16),
-              ...task.sdgTags.take(2).map((sdg) => Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: AppColors.surfaceContainerLow, borderRadius: BorderRadius.circular(8)),
-                child: Text('SDG $sdg', style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.onSurfaceVariant)),
-              )),
+              // Required skills badges
+              if (task.requiredSkills.isNotEmpty) ...[
+                Icon(Icons.handyman, size: 16, color: AppColors.outlineVariant),
+                const SizedBox(width: 4),
+                ...task.requiredSkills.take(2).map((skill) => Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: AppColors.tertiary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                  child: Text(skill, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.tertiary, fontSize: 11)),
+                )),
+                if (task.requiredSkills.length > 2)
+                  Text('+${task.requiredSkills.length - 2}', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant)),
+              ] else
+                ...task.sdgTags.take(2).map((sdg) => Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: AppColors.surfaceContainerLow, borderRadius: BorderRadius.circular(8)),
+                  child: Text('SDG $sdg', style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.onSurfaceVariant)),
+                )),
             ]),
           ]),
         ),

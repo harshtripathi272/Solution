@@ -185,8 +185,8 @@ class _NGOWorkerProfileScreenState extends State<NGOWorkerProfileScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildStatTile('Reports', user.tasksCompleted.toString()),
-                      _buildStatTile('Points', (user.trustScore * 10).toStringAsFixed(0)),
+                      _buildStatTile('Reports', '${appState.reportCount}'),
+                      _buildStatTile('Trust', user.trustScore.toStringAsFixed(1)),
                       _buildStatTile('Member Since', user.createdAt.year.toString()),
                     ],
                   ),

@@ -178,14 +178,14 @@ class _CoordinatorProfileScreenState extends State<CoordinatorProfileScreen> {
                   ),
                   const SizedBox(height: 24),
                   // Stats
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildStatTile('Volunteers', '${user.tasksCompleted}'),
-                      _buildStatTile('Reports', '${user.totalHoursVolunteered}'),
-                      _buildStatTile('Trust', '${user.trustScore.toStringAsFixed(1)}/5'),
-                    ],
-                  ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildStatTile('Tasks', '${appState.tasks.length}'),
+                        _buildStatTile('Reports', '${appState.reportCount}'),
+                        _buildStatTile('Trust', '${user.trustScore.toStringAsFixed(1)}/5'),
+                      ],
+                    ),
                 ],
               ),
             ),
