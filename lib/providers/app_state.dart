@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../config/constants.dart';
 import '../models/field_report_model.dart';
 import '../models/task_model.dart';
 import '../models/user_model.dart';
@@ -46,9 +47,8 @@ class AppState extends ChangeNotifier {
     }
     return const [];
   }
-
-  Future<void> refreshHistoricalTasks({
-    double? latitude,
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/v1/tasks')
+          .replace(queryParameters: queryParams);
     double? longitude,
     double radiusKm = 30.0,
     int limit = 20,
@@ -73,9 +73,8 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      final uri = Uri.parse(
-        'http://127.0.0.1:8000/api/v1/tasks',
-      ).replace(queryParameters: queryParams);
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/v1/tasks')
+          .replace(queryParameters: queryParams);
       final response = await _apiClient!.get(
         uri.path + (uri.hasQuery ? '?${uri.query}' : ''),
       );
@@ -102,7 +101,7 @@ class AppState extends ChangeNotifier {
   void setRequestedRole(UserRole role) {
     _requestedRole = role;
   }
-
+          id: reportId,
   // Getters
   UserRole get currentRole => _currentRole;
   AppUser? get currentUser => _currentUser;
@@ -159,7 +158,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _apiClient = ApiClient(baseUrl: "http://127.0.0.1:8000");
+      _apiClient = ApiClient(baseUrl: AppConstants.apiBaseUrl);
 
       // Pass the requested role if the user just signed up
       final payload = <String, dynamic>{};
@@ -272,8 +271,10 @@ class AppState extends ChangeNotifier {
       if (response.statusCode == 200 || response.statusCode == 201) {
         // 4. Update local state
         final data = jsonDecode(response.body);
+        final reportId =
+            data['id'] ?? data['event_id'] ?? DateTime.now().millisecondsSinceEpoch.toString();
         final report = FieldReport(
-          id: data['id'],
+          id: reportId,
           ngoId: _currentUser?.ngoId ?? 'local',
           submittedBy: _currentUser?.id ?? 'me',
           needType: needType,
