@@ -27,6 +27,7 @@ from pipeline.orchestrators.unified import unified_pipeline
 from pipeline.processing.multimodal_preprocessor import multimodal_preprocessor
 from pipeline.core.pubsub import broker, TOPIC_INGESTION_NORMALIZED
 from pipeline.core.schemas import IngestionLocation, UnifiedIngestionEvent
+from pipeline.core.background_queue import get_background_queue
 from api import heatmap_router
 from api.community_graph import router as community_graph_router
 
@@ -108,18 +109,57 @@ def _to_iso_string(value: Any) -> str | None:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Configure default executor pool for blocking I/O operations
+# This prevents thread pool exhaustion when multiple requests hit BigQuery/Firestore
+def _configure_executors():
+    """Configure thread pool sizes for async operations."""
+    loop = asyncio.get_event_loop()
+    from concurrent.futures import ThreadPoolExecutor
+    
+    # Increase default executor pool size (default is min(32, os.cpu_count() + 4))
+    # We increase it further for heavy concurrent workloads
+    max_workers = int(os.getenv("EXECUTOR_MAX_WORKERS", "50"))
+    loop.set_default_executor(ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="app-io-"))
+    logger.info(f"[Executor] Configured with max_workers={max_workers}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("---| Booting SevaSetu Crisis Intelligence Pipeline |---")
+    
+    # Configure executors
+    try:
+        _configure_executors()
+    except Exception as e:
+        logger.warning(f"[Executor] Failed to configure: {e}")
+    
+    # Start background queue for deferred operations
+    bg_queue = get_background_queue()
+    await bg_queue.start()
+    
     validation_service.start()
     allocation_engine.start()
     document_stream_orchestrator.start()
     unified_pipeline.start()        # data unification + persistent storage
     ingestion_manager.start()
+    
     yield
+    
+    # Graceful shutdown
+    logger.info("---| Shutting down Crisis Pipeline |---")
+    
+    # Stop accepting new background tasks
+    await bg_queue.stop()
+    
+    # Flush remaining batch operations
+    try:
+        from pipeline.storage.bigquery import bigquery_store
+        await bigquery_store.flush_all()
+        bigquery_store.shutdown()
+    except Exception as e:
+        logger.error(f"[Shutdown] BigQuery batch flush error: {e}")
+    
     await ingestion_manager.stop()
     await broker.shutdown()         # cancel GCP streaming-pull threads (no-op for mock)
-    logger.info("---| Shutting down Crisis Pipeline |---")
 
 app = FastAPI(
     title="SevaSetu Backend APIs",

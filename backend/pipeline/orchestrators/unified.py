@@ -28,6 +28,7 @@ from typing import Any, Optional
 
 from pipeline.core.pubsub import broker
 from pipeline.core.schemas import UnifiedIngestionEvent, to_crisis_event, FALLBACK_INDIA_LAT, FALLBACK_INDIA_LON
+from pipeline.core.background_queue import submit_background_task, TaskPriority
 from pipeline.processing.extraction_strategy import extraction_strategy_router
 from pipeline.processing.community_graph import community_graph_service
 from pipeline.processing.geocoding import geocoding_service
@@ -293,7 +294,7 @@ class UnifiedPipeline:
             nearby_volunteer_count=len(nearby),
         )
 
-        # Step 7 — Storage fan-out (all writes fire concurrently)
+        # Step 7 — Storage fan-out (critical-path sync, analytics deferred)
         if not event.geohash:
             logger.warning(
                 "[UnifiedPipeline] No geohash for event %s — skipping storage.", event.id
@@ -306,10 +307,22 @@ class UnifiedPipeline:
         )
 
         import asyncio
-        storage_tasks = [
+        
+        # CRITICAL PATH: Must complete before event is considered "stored"
+        # These operations are needed for:
+        # - Real-time query results
+        # - Task allocation
+        # - Region aggregation
+        critical_tasks = [
             firestore_store.upsert_region(event, final_score),
             firestore_store.append_event(event, final_score),
             firestore_store.upsert_chronic_score(event, severity_payload),
+            bigquery_store.append(event, final_score),  # Queued, non-blocking
+        ]
+        
+        # NORMAL PRIORITY: Analytics and context enrichment
+        # These improve query results but aren't strictly required
+        normal_tasks = [
             firestore_store.upsert_historical_context(
                 event,
                 severity_payload,
@@ -323,18 +336,51 @@ class UnifiedPipeline:
                 severity_payload,
                 recommended_tasks,
             ),
-            bigquery_store.append(event, final_score),
-            bigquery_store.append_severity_event(event, severity_payload),
-            bigquery_store.append_severity_timeseries(event, severity_payload),
-            community_graph_service.project_event(event, severity_payload),
+            bigquery_store.append_severity_event(event, severity_payload),  # Queued
         ]
-        if event.document_metadata is not None:
-            storage_tasks.append(bigquery_store.append_document_event(event, final_score))
-
+        
+        # LOW PRIORITY: Deferred analytics and reporting
+        # These can happen in the background without blocking user operations
+        async def deferred_operations():
+            try:
+                # Graph analytics and timeseries can be deferred
+                await bigquery_store.append_severity_timeseries(event, severity_payload)  # Queued
+                await community_graph_service.project_event(event, severity_payload)
+                
+                if event.document_metadata is not None:
+                    await bigquery_store.append_document_event(event, final_score)  # Queued
+            except Exception as e:
+                logger.error(f"[UnifiedPipeline] Deferred operations failed for {event.id}: {e}")
+        
+        # Execute critical path first
         results = await asyncio.gather(
-            *storage_tasks,
-            return_exceptions=True,   # never let one store failure cancel others
+            *critical_tasks,
+            return_exceptions=True,
         )
+        
+        # Check for critical failures
+        critical_failures = [r for r in results if isinstance(r, Exception)]
+        if critical_failures:
+            logger.error(
+                "[UnifiedPipeline] Critical storage failed for %s: %s",
+                event.id,
+                critical_failures[0],
+            )
+            await firestore_store.create_pipeline_alert(
+                event_id=event.id,
+                stage="critical_storage",
+                message="Critical storage operation failed",
+                details={"exception": str(critical_failures[0])},
+                severity="error",
+            )
+            return  # Don't continue if critical path fails
+        
+        # Execute normal-priority operations
+        results = await asyncio.gather(
+            *normal_tasks,
+            return_exceptions=True,
+        )
+        
         for idx, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.error(
@@ -343,13 +389,13 @@ class UnifiedPipeline:
                     event.id,
                     result,
                 )
-                await firestore_store.create_pipeline_alert(
-                    event_id=event.id,
-                    stage="storage_fanout",
-                    message=f"Storage task {idx} failed",
-                    details={"exception": str(result), "geohash": event.geohash, "need_type": event.need_type},
-                    severity="error",
-                )
+
+        # Submit deferred operations to background queue (non-blocking)
+        await submit_background_task(
+            deferred_operations,
+            TaskPriority.LOW,
+            f"deferred-{event.id}",
+        )
 
         logger.info("[UnifiedPipeline] Storage fan-out completed for %s", event.id)
 

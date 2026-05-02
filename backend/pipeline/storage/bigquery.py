@@ -29,10 +29,12 @@ immediately. Install `google-cloud-bigquery` to enable live writes.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List
+from concurrent.futures import ThreadPoolExecutor
 
 if TYPE_CHECKING:
     from pipeline.core.schemas import UnifiedIngestionEvent
@@ -118,7 +120,7 @@ _SEVERITY_TIMESERIES_SCHEMA = [
 
 
 class BigQueryStore:
-    """Append-only BigQuery sink — inserts rows via streaming insert API."""
+    """Append-only BigQuery sink — inserts rows via streaming insert API with batching."""
 
     def __init__(self) -> None:
         self._client = None
@@ -127,7 +129,29 @@ class BigQueryStore:
         self._severity_table_ref: str = ""
         self._severity_timeseries_table_ref: str = ""
         self._enabled = False
+        
+        # Batch writer configuration for non-blocking event processing
+        self._batch_size = int(os.environ.get("BIGQUERY_BATCH_SIZE", "50"))
+        self._batch_timeout_sec = float(os.environ.get("BIGQUERY_BATCH_TIMEOUT", "5"))
+        
+        # Pending batches per table
+        self._pending_events: dict[str, list] = {}
+        self._pending_docs: list = []
+        self._pending_severity: list = []
+        self._pending_timeseries: list = []
+        
+        # Batch flush tasks
+        self._batch_tasks: dict[str, asyncio.Task] = {}
+        
+        # Thread pool for blocking BigQuery operations
+        # Increased from default to handle multiple concurrent operations
+        self._executor = ThreadPoolExecutor(
+            max_workers=int(os.environ.get("BIGQUERY_EXECUTOR_WORKERS", "20")),
+            thread_name_prefix="bigquery-io-"
+        )
+        
         self._init()
+
 
     def _init(self) -> None:
         project = os.environ.get("BIGQUERY_PROJECT", "").strip()
@@ -147,13 +171,23 @@ class BigQueryStore:
         try:
             # --- Project B: use explicit analytics key, NOT the Firebase/Project A key ---
             cred_path = os.environ.get("GCP_ANALYTICS_CREDENTIALS_PATH", "").strip() or None
+            
+            # Configure larger connection pool for BigQuery client
+            from google.api_core import gapic_v1
+            client_options = gapic_v1.ClientOptions()
+            
             if cred_path:
                 from google.oauth2 import service_account as _sa
                 _creds = _sa.Credentials.from_service_account_file(
                     cred_path,
                     scopes=["https://www.googleapis.com/auth/bigquery"],
                 )
-                self._client = bigquery.Client(project=project, credentials=_creds)
+                # Create client with custom options for connection pooling
+                self._client = bigquery.Client(
+                    project=project, 
+                    credentials=_creds,
+                    client_options=client_options
+                )
                 logger.info("[BigQuery] Using explicit credentials: %s", cred_path)
             else:
                 # Fall back to Application Default Credentials
@@ -161,7 +195,25 @@ class BigQueryStore:
                     "[BigQuery] GCP_ANALYTICS_CREDENTIALS_PATH not set — using ADC. "
                     "This may use the wrong project's credentials."
                 )
-                self._client = bigquery.Client(project=project)
+                self._client = bigquery.Client(
+                    project=project,
+                    client_options=client_options
+                )
+            
+            # Configure HTTP client connection pooling (at urllib3 level)
+            from google.api_core.gapic_v1.client_info import ClientInfo
+            from google.api_core.transport.requests import Request
+            
+            # Increase connection pool at urllib3 level
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            http_client = Request()
+            # Set connection pool size via http client configuration
+            if hasattr(http_client, 'session'):
+                if hasattr(http_client.session, 'adapters'):
+                    for adapter in http_client.session.adapters.values():
+                        if hasattr(adapter, 'poolmanager'):
+                            adapter.poolmanager.connection_pool_kw['maxsize'] = 100
 
             self._table_ref = f"{project}.{dataset}.{table}"
             self._document_table_ref = f"{project}.{dataset}.{document_table}"
@@ -232,11 +284,104 @@ class BigQueryStore:
             self._client.create_table(table_obj, exists_ok=True)
             logger.info("[BigQuery] Created table: %s.%s.%s", project, dataset_id, table_id)
 
+    # -------------------------------------------------------------------
+    # Batch writing system — reduce connection pool contention
+    # -------------------------------------------------------------------
+    
+    async def _flush_events_batch(self) -> None:
+        """Flush accumulated events in a single batch insert."""
+        if not self._enabled or not self._pending_events.get(self._table_ref):
+            return
+        
+        rows_to_flush = self._pending_events.pop(self._table_ref, [])
+        if not rows_to_flush:
+            return
+            
+        try:
+            errors: List[dict] = await asyncio.get_event_loop().run_in_executor(
+                self._executor,
+                lambda: self._client.insert_rows_json(self._table_ref, rows_to_flush, timeout=30)
+            )
+            if errors:
+                logger.error("[BigQuery] Batch insert errors (%d rows): %s", len(rows_to_flush), errors[:3])
+            else:
+                logger.info("[BigQuery] Flushed %d event rows", len(rows_to_flush))
+        except Exception as exc:
+            logger.error("[BigQuery] Batch flush failed: %s", exc)
+
+    async def _flush_docs_batch(self) -> None:
+        """Flush accumulated document events."""
+        if not self._enabled or not self._pending_docs:
+            return
+            
+        rows_to_flush = self._pending_docs.copy()
+        self._pending_docs.clear()
+        
+        try:
+            errors: List[dict] = await asyncio.get_event_loop().run_in_executor(
+                self._executor,
+                lambda: self._client.insert_rows_json(self._document_table_ref, rows_to_flush, timeout=30)
+            )
+            if errors:
+                logger.error("[BigQuery] Document batch insert errors (%d rows): %s", len(rows_to_flush), errors[:3])
+            else:
+                logger.info("[BigQuery] Flushed %d document rows", len(rows_to_flush))
+        except Exception as exc:
+            logger.error("[BigQuery] Document batch flush failed: %s", exc)
+
+    async def _flush_severity_batch(self) -> None:
+        """Flush accumulated severity events."""
+        if not self._enabled or not self._pending_severity:
+            return
+            
+        rows_to_flush = self._pending_severity.copy()
+        self._pending_severity.clear()
+        
+        try:
+            errors: List[dict] = await asyncio.get_event_loop().run_in_executor(
+                self._executor,
+                lambda: self._client.insert_rows_json(self._severity_table_ref, rows_to_flush, timeout=30)
+            )
+            if errors:
+                logger.error("[BigQuery] Severity batch insert errors (%d rows): %s", len(rows_to_flush), errors[:3])
+        except Exception as exc:
+            logger.error("[BigQuery] Severity batch flush failed: %s", exc)
+
+    async def _flush_timeseries_batch(self) -> None:
+        """Flush accumulated timeseries events."""
+        if not self._enabled or not self._pending_timeseries:
+            return
+            
+        rows_to_flush = self._pending_timeseries.copy()
+        self._pending_timeseries.clear()
+        
+        try:
+            errors: List[dict] = await asyncio.get_event_loop().run_in_executor(
+                self._executor,
+                lambda: self._client.insert_rows_json(self._severity_timeseries_table_ref, rows_to_flush, timeout=30)
+            )
+            if errors:
+                logger.error("[BigQuery] Timeseries batch insert errors (%d rows): %s", len(rows_to_flush), errors[:3])
+        except Exception as exc:
+            logger.error("[BigQuery] Timeseries batch flush failed: %s", exc)
+
+    async def _schedule_flush(self, batch_key: str, flush_func) -> None:
+        """Schedule a flush task or reset existing one."""
+        # Cancel existing task if any
+        if batch_key in self._batch_tasks:
+            self._batch_tasks[batch_key].cancel()
+        
+        async def delayed_flush():
+            await asyncio.sleep(self._batch_timeout_sec)
+            await flush_func()
+        
+        self._batch_tasks[batch_key] = asyncio.create_task(delayed_flush())
+
     # Public API
     async def append(self, event: "UnifiedIngestionEvent", score: float) -> None:
         """
-        Stream-insert one event row into BigQuery.
-        Non-blocking: errors are logged but never re-raised.
+        Queue event for batch insertion into BigQuery (non-blocking).
+        Returns immediately; flush happens periodically or when batch is full.
         """
         if not self._enabled:
             return
@@ -259,19 +404,25 @@ class BigQueryStore:
         }
 
         try:
-            import asyncio
-            errors: List[dict] = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self._client.insert_rows_json(self._table_ref, [row])
-            )
-            if errors:
-                logger.error("[BigQuery] Insert errors: %s", errors)
+            # Add to pending batch
+            if self._table_ref not in self._pending_events:
+                self._pending_events[self._table_ref] = []
+            
+            self._pending_events[self._table_ref].append(row)
+            logger.debug("[BigQuery] Queued event %s (batch size: %d)", event.id, len(self._pending_events[self._table_ref]))
+            
+            # Flush if batch is full
+            if len(self._pending_events[self._table_ref]) >= self._batch_size:
+                await self._flush_events_batch()
             else:
-                logger.debug("[BigQuery] Appended event %s", event.id)
+                # Schedule flush if not already scheduled
+                await self._schedule_flush("events", self._flush_events_batch)
+                
         except Exception as exc:
-            logger.error("[BigQuery] append failed for %s: %s", event.id, exc)
+            logger.error("[BigQuery] Failed to queue event %s: %s", event.id, exc)
 
     async def append_document_event(self, event: "UnifiedIngestionEvent", score: float) -> None:
-        """Stream-insert one document-derived event row into the partitioned document table."""
+        """Queue document event for batch insertion into the partitioned document table."""
         if not self._enabled or not self._document_table_ref:
             return
 
@@ -300,19 +451,18 @@ class BigQueryStore:
         }
 
         try:
-            import asyncio
-            errors: List[dict] = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self._client.insert_rows_json(self._document_table_ref, [row]),
-            )
-            if errors:
-                logger.error("[BigQuery] Document insert errors: %s", errors)
+            self._pending_docs.append(row)
+            logger.debug("[BigQuery] Queued document event %s (batch size: %d)", event.id, len(self._pending_docs))
+            
+            if len(self._pending_docs) >= self._batch_size:
+                await self._flush_docs_batch()
             else:
-                logger.debug("[BigQuery] Appended document event %s", event.id)
+                await self._schedule_flush("docs", self._flush_docs_batch)
         except Exception as exc:
-            logger.error("[BigQuery] append_document_event failed for %s: %s", event.id, exc)
+            logger.error("[BigQuery] Failed to queue document event %s: %s", event.id, exc)
 
     async def append_severity_event(self, event: "UnifiedIngestionEvent", severity_payload: dict) -> None:
+        """Queue severity event for batch insertion."""
         if not self._enabled or not self._severity_table_ref:
             return
 
@@ -336,17 +486,18 @@ class BigQueryStore:
         }
 
         try:
-            import asyncio
-            errors: List[dict] = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self._client.insert_rows_json(self._severity_table_ref, [row]),
-            )
-            if errors:
-                logger.error("[BigQuery] Severity insert errors: %s", errors)
+            self._pending_severity.append(row)
+            logger.debug("[BigQuery] Queued severity event %s (batch size: %d)", event.id, len(self._pending_severity))
+            
+            if len(self._pending_severity) >= self._batch_size:
+                await self._flush_severity_batch()
+            else:
+                await self._schedule_flush("severity", self._flush_severity_batch)
         except Exception as exc:
-            logger.error("[BigQuery] append_severity_event failed for %s: %s", event.id, exc)
+            logger.error("[BigQuery] Failed to queue severity event %s: %s", event.id, exc)
 
     async def append_severity_timeseries(self, event: "UnifiedIngestionEvent", severity_payload: dict) -> None:
+        """Queue timeseries event for batch insertion."""
         if not self._enabled or not self._severity_timeseries_table_ref:
             return
 
@@ -361,15 +512,33 @@ class BigQueryStore:
         }
 
         try:
-            import asyncio
-            errors: List[dict] = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self._client.insert_rows_json(self._severity_timeseries_table_ref, [row]),
-            )
-            if errors:
-                logger.error("[BigQuery] Severity timeseries insert errors: %s", errors)
+            self._pending_timeseries.append(row)
+            logger.debug("[BigQuery] Queued timeseries event %s (batch size: %d)", event.id, len(self._pending_timeseries))
+            
+            if len(self._pending_timeseries) >= self._batch_size:
+                await self._flush_timeseries_batch()
+            else:
+                await self._schedule_flush("timeseries", self._flush_timeseries_batch)
         except Exception as exc:
-            logger.error("[BigQuery] append_severity_timeseries failed for %s: %s", event.id, exc)
+            logger.error("[BigQuery] Failed to queue timeseries event %s: %s", event.id, exc)
+
+    async def flush_all(self) -> None:
+        """Flush all pending batches (called on shutdown)."""
+        logger.info("[BigQuery] Flushing all pending batches...")
+        try:
+            await self._flush_events_batch()
+            await self._flush_docs_batch()
+            await self._flush_severity_batch()
+            await self._flush_timeseries_batch()
+            logger.info("[BigQuery] All batches flushed")
+        except Exception as exc:
+            logger.error("[BigQuery] Error during flush_all: %s", exc)
+    
+    def shutdown(self) -> None:
+        """Shutdown the executor pool."""
+        if self._executor:
+            self._executor.shutdown(wait=True)
+            logger.info("[BigQuery] Executor pool shut down")
 
 
 # Global singleton

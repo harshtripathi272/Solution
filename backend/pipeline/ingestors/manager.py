@@ -28,6 +28,7 @@ class IngestionManager:
     def __init__(self):
         self._tasks: list[asyncio.Task] = []
         self._enrich_osm = os.getenv("INGEST_ENRICH_OSM", "false").lower() == "true"
+        self._enable_gdacs = os.getenv("INGEST_GDACS_ENABLED", "true").lower() == "true"
         self._enable_ngo = os.getenv("INGEST_NGO_ENABLED", "true").lower() == "true"
         self._enable_rss = os.getenv("INGEST_RSS_ENABLED", "true").lower() == "true"
         self._enable_mastodon = os.getenv("INGEST_MASTODON_ENABLED", "true").lower() == "true"
@@ -35,6 +36,8 @@ class IngestionManager:
         self._enable_imd = os.getenv("INGEST_IMD_ENABLED", "false").lower() == "true"
         self._enable_reliefweb = os.getenv("INGEST_RELIEFWEB_ENABLED", "false").lower() == "true"
         self._enable_ndma = os.getenv("INGEST_NDMA_ENABLED", "true").lower() == "true"
+        self._enable_weather = os.getenv("INGEST_WEATHER_ENABLED", "true").lower() == "true"
+        self._enable_news = os.getenv("INGEST_NEWS_ENABLED", "true").lower() == "true"
         self._enable_document_stream = os.getenv("INGEST_DOCUMENT_STREAM_ENABLED", "false").lower() == "true"
         self._document_interval = int(os.getenv("INGEST_DOCUMENT_INTERVAL", "21600"))
         self._document_jsonl_path = os.getenv("INGEST_DOCUMENT_JSONL_PATH", "")
@@ -45,9 +48,12 @@ class IngestionManager:
             max_reports=int(os.getenv("INGEST_NGO_MAX_REPORTS", "80")),
         )
 
-        self._ingestors = [
-            GDACSIngestor(interval_seconds=int(os.getenv("INGEST_GDACS_INTERVAL", "60"))),
-        ]
+        self._ingestors = []
+        
+        if self._enable_gdacs:
+            self._ingestors.append(
+                GDACSIngestor(interval_seconds=int(os.getenv("INGEST_GDACS_INTERVAL", "60")))
+            )
         
         if self._enable_ndma:
             self._ingestors.append(
@@ -57,17 +63,22 @@ class IngestionManager:
                 )
             )
 
-        self._ingestors.extend([
-            OpenWeatherIngestor(
-                api_key=os.getenv("OPENWEATHER_API_KEY", ""),
-                interval_seconds=int(os.getenv("INGEST_WEATHER_INTERVAL", "420")),
-            ),
-            IndiaNewsIngestor(
-                news_api_key=os.getenv("NEWS_API_KEY", ""),
-                newsdata_api_key=os.getenv("NEWS_DATA_API_KEY", ""),
-                interval_seconds=int(os.getenv("INGEST_NEWS_INTERVAL", "420")),
-            ),
-        ])
+        if self._enable_weather:
+            self._ingestors.append(
+                OpenWeatherIngestor(
+                    api_key=os.getenv("OPENWEATHER_API_KEY", ""),
+                    interval_seconds=int(os.getenv("INGEST_WEATHER_INTERVAL", "420")),
+                )
+            )
+        
+        if self._enable_news:
+            self._ingestors.append(
+                IndiaNewsIngestor(
+                    news_api_key=os.getenv("NEWS_API_KEY", ""),
+                    newsdata_api_key=os.getenv("NEWS_DATA_API_KEY", ""),
+                    interval_seconds=int(os.getenv("INGEST_NEWS_INTERVAL", "420")),
+                )
+            )
         if self._enable_ngo:
             self._ingestors.append(self._ngo_ingestor)
         
