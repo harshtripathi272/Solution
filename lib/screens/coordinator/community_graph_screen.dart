@@ -25,7 +25,7 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
   String? _error;
   double _timeWindowDays = 180;
   String? _selectedCommunityId;
-  bool _showHeatmap = false; // Toggle for graph/heatmap
+  // heatmap toggle removed; use separate Heatmap navigation
 
   @override
   void initState() {
@@ -80,10 +80,7 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
     final overview = _overview;
     final visibleProfiles = _visibleProfiles;
 
-    // Show heatmap if toggled
-    if (_showHeatmap) {
-      return _buildHeatmapView(theme);
-    }
+    // Always show graph view here. Heatmap has a dedicated screen in navigation.
 
     return Container(
       decoration: const BoxDecoration(
@@ -107,37 +104,19 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Visualization toggle
+                          // Header hero and quick jump to Heatmap screen
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Expanded(
-                                child: _buildHero(theme, overview, visibleProfiles),
-                              ),
+                              Expanded(child: _buildHero(theme, overview, visibleProfiles)),
                               const SizedBox(width: 16),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: AppColors.outlineVariant),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _visualizationButton(
-                                      icon: Icons.hub,
-                                      label: 'Graph',
-                                      isSelected: !_showHeatmap,
-                                      onPressed: () => setState(() => _showHeatmap = false),
-                                    ),
-                                    _visualizationButton(
-                                      icon: Icons.thermostat,
-                                      label: 'Heatmap',
-                                      isSelected: _showHeatmap,
-                                      onPressed: () => setState(() => _showHeatmap = true),
-                                    ),
-                                  ],
-                                ),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HeatmapScreen()));
+                                },
+                                icon: const Icon(Icons.map_outlined),
+                                label: const Text('Open Heatmap'),
+                                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
                               ),
                             ],
                           ),
@@ -178,68 +157,6 @@ class _CommunityGraphScreenState extends State<CommunityGraphScreen> {
                     ),
                   ),
       ),
-    );
-  }
-
-  Widget _visualizationButton({
-    required IconData icon,
-    required String label,
-    required bool isSelected,
-    required VoidCallback onPressed,
-  }) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(4),
-      child: Material(
-        color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 16, color: isSelected ? AppColors.primary : AppColors.outlineVariant),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: isSelected ? AppColors.primary : AppColors.outlineVariant,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeatmapView(ThemeData theme) {
-    // Embed the actual HeatmapScreen widget
-    return Stack(
-      children: [
-        const HeatmapScreen(),
-        Positioned(
-          top: 16,
-          left: 16,
-          child: SafeArea(
-            child: ElevatedButton.icon(
-              onPressed: () => setState(() => _showHeatmap = false),
-              icon: const Icon(Icons.hub),
-              label: const Text('Constellation Map'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.surface,
-                foregroundColor: AppColors.onSurface,
-                elevation: 4,
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 

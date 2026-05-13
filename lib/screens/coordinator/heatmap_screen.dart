@@ -72,6 +72,12 @@ class _HeatmapScreenState extends State<HeatmapScreen>
     super.initState();
     _apiService = HeatmapApiService();
     _mapController = MapController();
+    // Ensure the map starts centered on India for a consistent default view
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        _mapController.move(const LatLng(20.5937, 78.9629), 5.0);
+      } catch (_) {}
+    });
     _loadHeatmapData();
     _startAutoRefresh();
   }
@@ -546,6 +552,7 @@ class _HeatmapScreenState extends State<HeatmapScreen>
     return bestRegion;
   }
 
+  // Only fit to data when the spread is reasonably large — otherwise keep the default India view
   void _fitMapToData() {
     if (!mounted) return;
 
@@ -560,11 +567,20 @@ class _HeatmapScreenState extends State<HeatmapScreen>
         return;
       }
 
-      final dataBounds = LatLngBounds.fromPoints(
-        _heatmapData
-            .map((p) => LatLng(p.latitude, p.longitude))
-            .toList(),
-      );
+      final points = _heatmapData.map((p) => LatLng(p.latitude, p.longitude)).toList();
+      final dataBounds = LatLngBounds.fromPoints(points);
+
+      final latSpan = (dataBounds.north - dataBounds.south).abs();
+      final lonSpan = (dataBounds.east - dataBounds.west).abs();
+
+      // If points are tightly clustered (< 2.5°), keep the default India center/zoom for better context.
+      const spreadThreshold = 2.5;
+      if (latSpan < spreadThreshold && lonSpan < spreadThreshold) {
+        try {
+          _mapController.move(const LatLng(20.5937, 78.9629), 6.5);
+        } catch (_) {}
+        return;
+      }
 
       _mapController.fitCamera(
         CameraFit.bounds(
@@ -811,46 +827,56 @@ class _HeatmapScreenState extends State<HeatmapScreen>
                           color: AppColors.surfaceContainerLowest.withValues(alpha: 0.75),
                           border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
                         ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Clusters', style: theme.textTheme.titleSmall),
-                            const SizedBox(height: AppSpacing.sm),
-                            Text(
-                              '${_heatmapData.length}',
-                              style: AppTypography.metric(size: 26, color: AppColors.primary),
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'Auto refresh (5 min)',
-                                    style: theme.textTheme.labelSmall,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 320, maxHeight: 240),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Clusters', style: theme.textTheme.titleSmall),
+                              const SizedBox(height: AppSpacing.sm),
+                              Text(
+                                '${_heatmapData.length}',
+                                style: AppTypography.metric(size: 26, color: AppColors.primary),
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Auto refresh (5 min)',
+                                      style: theme.textTheme.labelSmall,
+                                    ),
+                                  ),
+                                  Transform.scale(
+                                    scale: 0.85,
+                                    child: Switch.adaptive(
+                                      value: _autoRefreshEnabled,
+                                      onChanged: (v) => setState(() => _autoRefreshEnabled = v),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: _regions.map((region) {
+                                      final count = clusterCounts[region] ?? 0;
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 6),
+                                        child: Text(
+                                          '${region.toUpperCase()}: $count',
+                                          style: theme.textTheme.labelSmall?.copyWith(color: AppColors.onSurfaceVariant),
+                                        ),
+                                      );
+                                    }).toList(),
                                   ),
                                 ),
-                                Transform.scale(
-                                  scale: 0.85,
-                                  child: Switch.adaptive(
-                                    value: _autoRefreshEnabled,
-                                    onChanged: (v) => setState(() => _autoRefreshEnabled = v),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            ..._regions.map((region) {
-                              final count = clusterCounts[region] ?? 0;
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Text(
-                                  '${region.toUpperCase()}: $count',
-                                  style: theme.textTheme.labelSmall?.copyWith(color: AppColors.onSurfaceVariant),
-                                ),
-                              );
-                            }),
-                          ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
