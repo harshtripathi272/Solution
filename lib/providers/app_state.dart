@@ -51,6 +51,8 @@ class AppState extends ChangeNotifier {
   void _applyRegisterPayload(Map<String, dynamic> data, User firebaseUser) {
     UserRole mappedRole = UserRole.volunteer;
     final roleStr = data['role']?.toString();
+    if (roleStr == 'platform_admin') mappedRole = UserRole.platformAdmin;
+    if (roleStr == 'ngo_admin') mappedRole = UserRole.ngoAdmin;
     if (roleStr == 'coordinator') mappedRole = UserRole.coordinator;
     if (roleStr == 'ngo_worker') mappedRole = UserRole.ngoWorker;
 

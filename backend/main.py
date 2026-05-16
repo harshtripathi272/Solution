@@ -13,7 +13,7 @@ import os
 import httpx
 
 from auth import get_current_user, get_current_user_token, RoleChecker, db, firestore
-from models import UserProfile, UserRole
+from models import UserProfile, UserRole, OrganizationProfile
 from pydantic import BaseModel, Field
 
 # Pipeline Imports
@@ -213,7 +213,9 @@ def register_user(req: RegisterRequest, decoded_token: dict = Depends(get_curren
     
     requested_role_str = req.requested_role.split('.')[-1]
     role_map = {
+        "platform_admin": UserRole.platform_admin.value,
         "coordinator": UserRole.coordinator.value,
+        "ngo_admin": UserRole.ngo_admin.value,
         "ngoWorker": UserRole.ngo_worker.value,
         "ngo_worker": UserRole.ngo_worker.value,
         "volunteer": UserRole.volunteer.value,
@@ -285,9 +287,9 @@ async def _process_report_submission(
     ts: datetime,
 ) -> None:
     try:
-        insight = await multimodal_preprocessor.analyze_evidence(
-            media_urls=req.media_urls,
-            description_hint=req.description,
+        insight = await multimodal_preprocessor.generate_insight(
+            text=req.description,
+            image_urls=req.media_urls
         )
 
         event_metadata = {
@@ -296,12 +298,9 @@ async def _process_report_submission(
             "organization_id": current_user.organization_id,
             "multimodal_analysis": {
                 "summary": insight.summary,
-                "destruction_detected": insight.destruction_detected,
-                "crowd_size_estimate": insight.crowd_size_estimate,
-                "distress_level": insight.distress_level,
                 "confidence": insight.confidence,
+                "detected_needs": insight.detected_needs,
             },
-            "media_urls": req.media_urls,
         }
 
         event = UnifiedIngestionEvent(
@@ -318,14 +317,10 @@ async def _process_report_submission(
             needs_geocoding=False,
         )
 
-        await broker.publish(TOPIC_INGESTION_NORMALIZED, event)
+        await broker.publish(TOPIC_INGESTION_NORMALIZED, event.json().encode())
         logger.info("[API] Report %s queued for ingestion", event_id)
     except Exception as exc:
         logger.exception("[API] Failed to process report %s: %s", event_id, exc)
-    return {
-        "status": "ok",
-        "cached_until": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
-    }
 
 @app.delete("/api/v1/location/revoke")
 def revoke_location(decoded_token: dict = Depends(get_current_user_token)):
@@ -362,7 +357,7 @@ async def changedetection_ngo_webhook(
 @app.post("/api/v1/ingestion/documents/jsonl")
 async def ingest_documents_from_jsonl(
     payload: DocumentJsonlIngestRequest,
-    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
+    current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.ngo_admin, UserRole.ngo_worker, UserRole.coordinator]))
 ):
     """On-demand document-intelligence enqueue from Scrapy JSONL output."""
     try:
@@ -389,7 +384,7 @@ async def ingest_documents_from_jsonl(
 @app.post("/api/v1/ingestion/documents/jsonl-url")
 async def ingest_documents_from_jsonl_url(
     payload: DocumentJsonlUrlIngestRequest,
-    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
+    current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.ngo_admin, UserRole.ngo_worker, UserRole.coordinator]))
 ):
     """On-demand document-intelligence enqueue from remotely hosted Scrapy JSONL output."""
     try:
@@ -416,7 +411,7 @@ async def ingest_documents_from_jsonl_url(
 @app.post("/api/v1/severity/feedback")
 async def submit_severity_feedback(
     payload: SeverityFeedbackRequest,
-    current_user: UserProfile = Depends(RoleChecker([UserRole.coordinator]))
+    current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.coordinator]))
 ):
     """Coordinator feedback endpoint for resolved/worsened/stable severity correction."""
     feedback = payload.feedback.strip().lower()
@@ -482,7 +477,7 @@ def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(ge
 
 # --- RBAC Protected Endpoints ---
 @app.get("/api/v1/alerts")
-def get_global_alerts(current_user: UserProfile = Depends(RoleChecker([UserRole.coordinator]))):
+def get_global_alerts(current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.coordinator]))):
     """Only Coordinators can access global alerts"""
     return {
         "message": "Global alerts accessed successfully. This implies critical information.",
@@ -492,7 +487,7 @@ def get_global_alerts(current_user: UserProfile = Depends(RoleChecker([UserRole.
 @app.post("/api/v1/reports")
 async def submit_report(
     req: NGOReportRequest,
-    current_user: UserProfile = Depends(RoleChecker([UserRole.ngo_worker, UserRole.coordinator]))
+    current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.ngo_admin, UserRole.ngo_worker, UserRole.coordinator]))
 ):
     """
     Official report submission from a verified NGO worker.
@@ -515,7 +510,7 @@ async def submit_report(
 
 @app.get("/api/v1/tasks")
 async def get_tasks(
-    current_user: UserProfile = Depends(RoleChecker([UserRole.volunteer, UserRole.ngo_worker, UserRole.coordinator])),
+    current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.ngo_admin, UserRole.volunteer, UserRole.ngo_worker, UserRole.coordinator])),
     radius_km: float = 30.0,
     limit: int = 20,
     latitude: float | None = None,
@@ -530,7 +525,7 @@ async def get_tasks(
     elif user_location is not None:
         anchor_lat, anchor_lon = user_location.lat, user_location.lon
         location_source = "shared_location"
-    elif current_user.role in {UserRole.coordinator, UserRole.ngo_worker}:
+    elif current_user.role in {UserRole.platform_admin, UserRole.ngo_admin, UserRole.coordinator, UserRole.ngo_worker}:
         anchor_lat = anchor_lon = None
         location_source = "global"
     else:
@@ -539,7 +534,11 @@ async def get_tasks(
             detail="No active shared location found. Share location or pass latitude/longitude query params.",
         )
 
-    raw_tasks = await firestore_store.list_volunteer_area_tasks(limit=max(50, limit * 5), active_only=True)
+    organization_filter = None
+    if current_user.role in {UserRole.ngo_admin, UserRole.ngo_worker}:
+        organization_filter = current_user.organization_id
+
+    raw_tasks = await firestore_store.list_volunteer_area_tasks(limit=max(50, limit * 5), active_only=True, organization_id=organization_filter)
 
     def _sdg_tags_for_need(need_type: str) -> list[int]:
         mapping = {
@@ -625,6 +624,51 @@ async def get_tasks(
         "count": min(limit, len(flattened)),
         "tasks": flattened[:limit],
     }
+
+
+# --- Organization Management ---
+
+@app.post("/api/v1/organizations", status_code=status.HTTP_201_CREATED)
+async def create_organization(
+    org: OrganizationProfile,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin]))
+):
+    """Platform Admin only: Create a new organization."""
+    try:
+        org_id = org.id or org.name.lower().replace(" ", "_")
+        org.id = org_id
+        db.collection("organizations").document(org_id).set(org.dict())
+        return {"message": "Organization created", "id": org_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/organizations")
+async def list_organizations(
+    current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.ngo_admin, UserRole.coordinator]))
+):
+    """List all registered organizations."""
+    try:
+        docs = db.collection("organizations").stream()
+        return [doc.to_dict() for doc in docs]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/organizations/{org_id}")
+async def get_organization(
+    org_id: str,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.ngo_admin, UserRole.coordinator, UserRole.ngo_worker]))
+):
+    """Fetch organization details. If not admin, can only fetch own org."""
+    if current_user.role not in [UserRole.platform_admin, UserRole.coordinator] and current_user.organization_id != org_id:
+        raise HTTPException(status_code=403, detail="Forbidden: You can only access your own organization profile")
+    
+    try:
+        doc = db.collection("organizations").document(org_id).get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        return doc.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

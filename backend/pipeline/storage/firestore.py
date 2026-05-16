@@ -212,6 +212,7 @@ class FirestoreStore:
                     "classification": severity_engine.get("classification", "Moderate"),
                 }
             ]),
+            "organization_id": (event.metadata or {}).get("organization_id", "GLOBAL"),
         }
 
         try:
@@ -273,6 +274,7 @@ class FirestoreStore:
             "admin_level":        event.admin_level,
             "population_affected":event.population_affected,
             "source_tier":        event.source_tier,
+            "organization_id":   (event.metadata or {}).get("organization_id", "GLOBAL"),
             "metadata":           {k: str(v) for k, v in (event.metadata or {}).items()},
         }
 
@@ -637,6 +639,7 @@ class FirestoreStore:
             "active": True,
             "created_at": now,
             "updated_at": now,
+            "organization_id": (event.metadata or {}).get("organization_id", "GLOBAL"),
             "expires_at": now.replace(microsecond=0),
         }
 
@@ -651,7 +654,7 @@ class FirestoreStore:
         except Exception as exc:
             logger.error("[FirestoreStore] upsert_volunteer_area_tasks failed for %s: %s", doc_id, exc)
 
-    async def list_volunteer_area_tasks(self, limit: int = 100, active_only: bool = True) -> list[dict]:
+    async def list_volunteer_area_tasks(self, limit: int = 100, active_only: bool = True, organization_id: str | None = None) -> list[dict]:
         db = self._get_db()
         if not db:
             return []
@@ -660,6 +663,9 @@ class FirestoreStore:
             query = db.collection(self._VOLUNTEER_TASKS_COLLECTION)
             if active_only:
                 query = query.where("active", "==", True)
+            if organization_id:
+                query = query.where("organization_id", "==", organization_id)
+            
             query = query.order_by("updated_at", direction=self._firestore.Query.DESCENDING).limit(limit)
             return list(query.stream())
 

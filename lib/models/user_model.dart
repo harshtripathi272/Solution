@@ -1,6 +1,6 @@
 import 'package:uuid/uuid.dart';
 
-enum UserRole { ngoWorker, volunteer, coordinator }
+enum UserRole { platformAdmin, ngoAdmin, ngoWorker, volunteer, coordinator }
 
 class AppUser {
   final String id;
