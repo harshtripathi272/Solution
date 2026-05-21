@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_state.dart';
 import '../../config/theme.dart';
 import '../../models/task_model.dart';
+import '../../models/user_model.dart';
 import '../../widgets/stat_card.dart';
 import '../../widgets/task_card.dart';
 import '../../widgets/crisis_alert_card.dart';
@@ -24,7 +26,9 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
   late CommunityGraphApiService _apiService;
   Map<String, dynamic>? _recentNeeds;
   CommunityGraphOverview? _overviewData;
+  List<Map<String, dynamic>> _orgMembers = [];
   bool _loading = false;
+  bool _loadingMembers = false;
   String? _error;
 
   @override
@@ -32,6 +36,24 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
     super.initState();
     _apiService = CommunityGraphApiService();
     _loadRecentNeeds();
+    _loadOrgMembers();
+  }
+
+  Future<void> _loadOrgMembers() async {
+    if (!mounted) return;
+    final state = context.read<AppState>();
+    if (state.currentRole != UserRole.ngoAdmin && state.currentRole != UserRole.platformAdmin) {
+      return;
+    }
+    if (state.currentUser?.ngoId == null) return;
+
+    setState(() => _loadingMembers = true);
+    final members = await state.fetchOrganizationMembers();
+    if (!mounted) return;
+    setState(() {
+      _orgMembers = members;
+      _loadingMembers = false;
+    });
   }
 
   Future<void> _loadRecentNeeds() async {
@@ -72,15 +94,25 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
           return const Center(child: CircularProgressIndicator());
         }
 
+        final isNgoAdmin = state.currentRole == UserRole.ngoAdmin;
+
         return RefreshIndicator(
           color: AppColors.primary,
-          onRefresh: _loadRecentNeeds,
+          onRefresh: () async {
+            await Future.wait([_loadRecentNeeds(), _loadOrgMembers()]);
+          },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildHero(theme).animate().fadeIn(duration: AppMotion.standard),
+                _buildHero(theme, state).animate().fadeIn(duration: AppMotion.standard),
+                if (isNgoAdmin) ...[
+                  _buildOrganizationIdCard(theme, state),
+                  const SizedBox(height: AppSpacing.lg),
+                  _buildOrgMembersSection(theme, state),
+                  const SizedBox(height: AppSpacing.xxl),
+                ],
                 if (_loading)
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -197,7 +229,11 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
   }
 
   // ─────────────────────────────────────────────────────────── pieces
-  Widget _buildHero(ThemeData theme) {
+  Widget _buildHero(ThemeData theme, AppState state) {
+    final orgName = state.organizationName ?? 'your NGO';
+    final region = state.organizationRegion;
+    final isNgoAdmin = state.currentRole == UserRole.ngoAdmin;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.lg),
@@ -205,18 +241,143 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Coordinator overview',
+            isNgoAdmin ? 'NGO administrator' : 'Operations overview',
             style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant),
           ),
           const SizedBox(height: 4),
-          Text('Community snapshot', style: theme.textTheme.headlineLarge),
+          Text(
+            isNgoAdmin ? orgName : 'Community snapshot',
+            style: theme.textTheme.headlineLarge,
+          ),
           const SizedBox(height: 6),
           Text(
-            'Live signals from your communities, ranked by urgency.',
+            isNgoAdmin
+                ? region != null
+                    ? 'Managing volunteers and needs in $region.'
+                    : 'Managing volunteers and needs for your organization.'
+                : 'Live signals from your communities, ranked by urgency.',
             style: theme.textTheme.bodyMedium,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildOrganizationIdCard(ThemeData theme, AppState state) {
+    final orgId = state.currentUser?.ngoId;
+    if (orgId == null || orgId.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: Card(
+        color: AppColors.primaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Your Organization ID',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: AppColors.onPrimaryContainer,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Share this 8-digit code with volunteers and field workers when they sign up on SevaSetu.',
+                style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onPrimaryContainer),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      orgId,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        letterSpacing: 4,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Copy organization ID',
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: orgId));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Organization ID copied')),
+                      );
+                    },
+                    icon: const Icon(Icons.copy_rounded, color: AppColors.primary),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrgMembersSection(ThemeData theme, AppState state) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          theme,
+          title: 'Enrolled volunteers',
+          badge: _loadingMembers ? '…' : '${_orgMembers.length}',
+          badgeColor: AppColors.primary,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        if (_loadingMembers)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: LinearProgressIndicator(minHeight: 2),
+          )
+        else if (_orgMembers.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Text(
+              state.currentUser?.ngoId != null
+                  ? 'No volunteers enrolled yet. Share organization ID ${state.currentUser!.ngoId} at volunteer sign-up.'
+                  : 'No volunteers enrolled yet. Share your organization ID at volunteer sign-up.',
+              style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.onSurfaceVariant),
+            ),
+          )
+        else
+          ..._orgMembers.take(8).map((member) {
+            final name = (member['name'] ?? member['email'] ?? 'Volunteer').toString();
+            final role = (member['role'] ?? 'volunteer').toString().replaceAll('_', ' ');
+            final available = member['is_available'] == true;
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+              child: Card(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AppColors.primaryContainer,
+                    child: Icon(
+                      role.contains('worker') ? Icons.people_alt_rounded : Icons.volunteer_activism_rounded,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                  title: Text(name),
+                  subtitle: Text(
+                    '${role[0].toUpperCase()}${role.substring(1)}'
+                    '${member['location'] != null ? ' · ${member['location']}' : ''}',
+                  ),
+                  trailing: Icon(
+                    available ? Icons.check_circle_rounded : Icons.pause_circle_outline_rounded,
+                    color: available ? AppColors.success : AppColors.onSurfaceVariant,
+                    size: 20,
+                  ),
+                ),
+              ),
+            );
+          }),
+      ],
     );
   }
 

@@ -77,7 +77,9 @@ def _normalize_profile(payload: dict[str, Any]) -> dict[str, Any]:
 @router.get("/overview")
 async def community_graph_overview(
     limit: int = Query(default=12, ge=1, le=50),
-    current_user: UserProfile = Depends(RoleChecker([UserRole.coordinator, UserRole.ngo_worker, UserRole.volunteer])),
+    current_user: UserProfile = Depends(
+        RoleChecker([UserRole.ngo_admin, UserRole.coordinator, UserRole.ngo_worker, UserRole.volunteer])
+    ),
 ):
     docs = await firestore_store.list_community_projections(limit=limit)
     if not docs:
@@ -108,7 +110,9 @@ async def community_graph_overview(
 @router.get("/{community_id}")
 async def community_graph_profile(
     community_id: str,
-    current_user: UserProfile = Depends(RoleChecker([UserRole.coordinator, UserRole.ngo_worker, UserRole.volunteer])),
+    current_user: UserProfile = Depends(
+        RoleChecker([UserRole.ngo_admin, UserRole.coordinator, UserRole.ngo_worker, UserRole.volunteer])
+    ),
 ):
     payload = await firestore_store.get_community_projection(community_id)
     if payload is None:
@@ -126,7 +130,9 @@ async def community_graph_profile(
 async def recent_needs(
     limit: int = Query(default=20, ge=1, le=100),
     hours: int = Query(default=48, ge=1, le=720),
-    current_user: UserProfile = Depends(RoleChecker([UserRole.coordinator, UserRole.ngo_worker, UserRole.volunteer])),
+    current_user: UserProfile = Depends(
+        RoleChecker([UserRole.ngo_admin, UserRole.coordinator, UserRole.ngo_worker, UserRole.volunteer])
+    ),
 ):
     """
     Fetch recent ingestion events (needs) from Firestore.

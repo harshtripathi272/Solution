@@ -18,7 +18,7 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   static const List<UserRole> _signUpRoleOrder = [
     UserRole.volunteer,
-    UserRole.coordinator,
+    UserRole.ngoAdmin,
     UserRole.ngoWorker,
   ];
 
@@ -30,6 +30,12 @@ class _AuthScreenState extends State<AuthScreen> {
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _orgNameController = TextEditingController();
+  final _orgMissionController = TextEditingController();
+  final _orgRegionController = TextEditingController();
+  final _orgIdController = TextEditingController();
+  bool _isIndependent = false;
   final _authService = AuthService();
 
   Future<void> _submit() async {
@@ -41,6 +47,27 @@ class _AuthScreenState extends State<AuthScreen> {
       return;
     }
 
+    if (!_isLogin) {
+      final orgId = _orgIdController.text.trim();
+      if ((_selectedRole == UserRole.volunteer && !_isIndependent) ||
+          _selectedRole == UserRole.ngoWorker) {
+        if (orgId.isEmpty) {
+          setState(() => _errorMessage = 'Enter the 8-digit Organization ID from your NGO.');
+          return;
+        }
+        if (!RegExp(r'^\d{8}$').hasMatch(orgId.replaceAll(RegExp(r'\s'), ''))) {
+          setState(() => _errorMessage = 'Organization ID must be exactly 8 digits.');
+          return;
+        }
+      }
+      if (_selectedRole == UserRole.ngoAdmin) {
+        if (_nameController.text.trim().isEmpty || _orgNameController.text.trim().isEmpty) {
+          setState(() => _errorMessage = 'Please enter your name and NGO name.');
+          return;
+        }
+      }
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -50,7 +77,24 @@ class _AuthScreenState extends State<AuthScreen> {
       if (_isLogin) {
         await _authService.signInWithEmailPassword(email, password);
       } else {
-        if (mounted) context.read<AppState>().setRequestedRole(_selectedRole);
+        if (mounted) {
+          final regData = <String, dynamic>{
+            'requested_role': _selectedRole.name,
+            'name': _nameController.text.trim(),
+            'is_independent': _isIndependent,
+          };
+          if (_selectedRole == UserRole.ngoAdmin) {
+            regData.addAll({
+              'organization_name': _orgNameController.text.trim(),
+              'organization_mission': _orgMissionController.text.trim(),
+              'organization_region': _orgRegionController.text.trim(),
+            });
+          } else if (_selectedRole == UserRole.ngoWorker ||
+              (_selectedRole == UserRole.volunteer && !_isIndependent)) {
+            regData['organization_id'] = _orgIdController.text.trim().replaceAll(RegExp(r'\s'), '');
+          }
+          context.read<AppState>().setRegistrationData(regData);
+        }
         await _authService.signUpWithEmailPassword(email, password);
       }
     } on FirebaseAuthException catch (e) {
@@ -87,19 +131,26 @@ class _AuthScreenState extends State<AuthScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _nameController.dispose();
+    _orgNameController.dispose();
+    _orgMissionController.dispose();
+    _orgRegionController.dispose();
+    _orgIdController.dispose();
     super.dispose();
   }
 
   String _roleLabel(UserRole r) => switch (r) {
         UserRole.volunteer => 'Volunteer',
-        UserRole.coordinator => 'Coordinator',
         UserRole.ngoWorker => 'NGO field worker',
+        UserRole.ngoAdmin || UserRole.coordinator => 'NGO Administrator',
+        UserRole.platformAdmin => 'Platform Admin',
       };
 
   IconData _roleIcon(UserRole r) => switch (r) {
         UserRole.volunteer => Icons.volunteer_activism_rounded,
-        UserRole.coordinator => Icons.admin_panel_settings_rounded,
         UserRole.ngoWorker => Icons.people_alt_rounded,
+        UserRole.ngoAdmin || UserRole.coordinator => Icons.business_center_rounded,
+        UserRole.platformAdmin => Icons.shield_rounded,
       };
 
   @override
@@ -162,8 +213,70 @@ class _AuthScreenState extends State<AuthScreen> {
                             isPassword: true,
                           ).animate(delay: 160.ms).fadeIn(duration: AppMotion.standard).slideY(begin: 0.06, end: 0),
                           if (!_isLogin) ...[
+                            const SizedBox(height: AppSpacing.md),
+                            _buildTextField(
+                              controller: _nameController,
+                              label: 'Full Name',
+                              icon: Icons.person_outline_rounded,
+                            ).animate(delay: 180.ms).fadeIn(duration: AppMotion.standard),
                             const SizedBox(height: AppSpacing.lg),
                             _buildRoleDropdown(theme),
+                            if (_selectedRole == UserRole.ngoAdmin) ...[
+                              const SizedBox(height: AppSpacing.lg),
+                              _buildTextField(
+                                controller: _orgNameController,
+                                label: 'NGO Name',
+                                icon: Icons.business_rounded,
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              _buildTextField(
+                                controller: _orgMissionController,
+                                label: 'NGO Mission',
+                                icon: Icons.flag_rounded,
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              _buildTextField(
+                                controller: _orgRegionController,
+                                label: 'NGO Primary Region',
+                                icon: Icons.map_rounded,
+                              ),
+                            ] else if (_selectedRole == UserRole.ngoWorker ||
+                                _selectedRole == UserRole.volunteer) ...[
+                              const SizedBox(height: AppSpacing.md),
+                              if (_selectedRole == UserRole.volunteer)
+                                SwitchListTile(
+                                  title: const Text('I am an independent helper'),
+                                  subtitle: const Text('Not affiliated with any specific NGO'),
+                                  value: _isIndependent,
+                                  activeThumbColor: AppColors.primary,
+                                  onChanged: (v) => setState(() {
+                                    _isIndependent = v;
+                                    if (v) _orgIdController.clear();
+                                  }),
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                              if (_selectedRole == UserRole.ngoWorker ||
+                                  !_isIndependent) ...[
+                                const SizedBox(height: AppSpacing.md),
+                                _buildTextField(
+                                  controller: _orgIdController,
+                                  label: 'Organization ID',
+                                  icon: Icons.pin_rounded,
+                                  keyboardType: TextInputType.number,
+                                  hintText: '8-digit code from your NGO',
+                                  maxLength: 8,
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(top: AppSpacing.xs),
+                                  child: Text(
+                                    'Ask your NGO administrator for this SevaSetu organization ID.',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: AppColors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ],
                           const SizedBox(height: AppSpacing.xl),
                           _buildPrimaryButton(theme),
@@ -383,14 +496,19 @@ class _AuthScreenState extends State<AuthScreen> {
     required IconData icon,
     bool isPassword = false,
     TextInputType? keyboardType,
+    String? hintText,
+    int? maxLength,
   }) {
     return TextField(
       controller: controller,
       obscureText: isPassword && _obscurePassword,
       keyboardType: keyboardType,
+      maxLength: maxLength,
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: AppColors.onSurface),
       decoration: InputDecoration(
         labelText: label,
+        hintText: hintText,
+        counterText: maxLength != null ? '' : null,
         prefixIcon: Icon(icon, color: AppColors.primary),
         suffixIcon: isPassword
             ? IconButton(

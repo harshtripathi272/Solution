@@ -56,7 +56,7 @@ class _CoordinatorProfileScreenState extends State<CoordinatorProfileScreen> {
         id: user.id,
         name: _nameController.text,
         email: user.email,
-        role: UserRole.coordinator,
+        role: user.role,
         phone: _phoneController.text,
         skills: user.skills,
         location: _locationController.text,
@@ -241,7 +241,9 @@ class _CoordinatorProfileScreenState extends State<CoordinatorProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  user.name.isEmpty ? 'Coordinator' : user.name,
+                  user.name.isEmpty
+                      ? (user.role == UserRole.ngoAdmin ? 'NGO Administrator' : 'Administrator')
+                      : user.name,
                   style: theme.textTheme.titleLarge?.copyWith(color: Colors.white),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -261,7 +263,7 @@ class _CoordinatorProfileScreenState extends State<CoordinatorProfileScreen> {
                     borderRadius: AppRadius.pillR,
                   ),
                   child: Text(
-                    'Coordinator',
+                    user.role == UserRole.ngoAdmin ? 'NGO Administrator' : 'Administrator',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,

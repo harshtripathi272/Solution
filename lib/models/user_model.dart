@@ -17,6 +17,7 @@ class AppUser {
   final int tasksCompleted;
   final int totalHoursVolunteered;
   final bool isAvailable;
+  final bool isIndependent;
   final DateTime createdAt;
 
   AppUser({
@@ -34,6 +35,7 @@ class AppUser {
     this.tasksCompleted = 0,
     this.totalHoursVolunteered = 0,
     this.isAvailable = true,
+    this.isIndependent = false,
     DateTime? createdAt,
   })  : id = id ?? const Uuid().v4(),
         createdAt = createdAt ?? DateTime.now();
@@ -53,6 +55,7 @@ class AppUser {
         'tasksCompleted': tasksCompleted,
         'totalHoursVolunteered': totalHoursVolunteered,
         'isAvailable': isAvailable,
+        'isIndependent': isIndependent,
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -71,6 +74,7 @@ class AppUser {
         tasksCompleted: map['tasksCompleted'] ?? 0,
         totalHoursVolunteered: map['totalHoursVolunteered'] ?? 0,
         isAvailable: map['isAvailable'] ?? true,
+        isIndependent: map['isIndependent'] ?? map['is_independent'] ?? false,
         createdAt: DateTime.parse(map['createdAt']),
       );
 
@@ -89,6 +93,7 @@ class AppUser {
     int? tasksCompleted,
     int? totalHoursVolunteered,
     bool? isAvailable,
+    bool? isIndependent,
     DateTime? createdAt,
   }) {
     return AppUser(
@@ -106,6 +111,7 @@ class AppUser {
       tasksCompleted: tasksCompleted ?? this.tasksCompleted,
       totalHoursVolunteered: totalHoursVolunteered ?? this.totalHoursVolunteered,
       isAvailable: isAvailable ?? this.isAvailable,
+      isIndependent: isIndependent ?? this.isIndependent,
       createdAt: createdAt ?? this.createdAt,
     );
   }

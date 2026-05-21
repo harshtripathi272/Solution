@@ -6,8 +6,15 @@ import '../providers/app_state.dart';
 import 'auth_screen.dart';
 import '../app.dart';
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  User? _previousUser;
 
   @override
   Widget build(BuildContext context) {
@@ -18,14 +25,26 @@ class AuthWrapper extends StatelessWidget {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        if (snapshot.hasData) {
-          return const InitializerScreen();
+        final user = snapshot.data;
+        if (_previousUser != null && user == null) {
+          context.read<AppState>().clearSession();
+        }
+        _previousUser = user;
+
+        if (user != null) {
+          return InitializerScreen(key: ValueKey(user.uid));
         }
 
         return const AuthScreen();
       },
     );
   }
+}
+
+Future<void> _signOut(BuildContext context) async {
+  await AuthService().signOut(
+    onBeforeSignOut: () async => context.read<AppState>().clearSession(),
+  );
 }
 
 class InitializerScreen extends StatefulWidget {
@@ -62,7 +81,7 @@ class _InitializerScreenState extends State<InitializerScreen> {
                 Text(state.backendError!, style: const TextStyle(color: Colors.red)),
                 const SizedBox(height: 16),
                 ElevatedButton(
-                  onPressed: () => AuthService().signOut(),
+                  onPressed: () => _signOut(context),
                   child: const Text("Sign Out & Retry"),
                 )
               ] else

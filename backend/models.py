@@ -21,12 +21,15 @@ class UserProfile(BaseModel):
     skills: list[str] = Field(default_factory=list)
     is_available: bool = True
     is_verified: bool = False
+    is_independent: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
 class OrganizationProfile(BaseModel):
-    id: str
+    id: str  # Site-issued 8-digit organization code (share with volunteers at sign-up)
     name: str
+    mission: Optional[str] = None
+    region: Optional[str] = None
     regions: list[str] = Field(default_factory=list)
     admin_uids: list[str] = Field(default_factory=list)
     is_active: bool = True

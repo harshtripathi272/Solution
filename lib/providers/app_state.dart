@@ -27,7 +27,9 @@ class AppState extends ChangeNotifier {
 
   // UI state
   int _currentNavIndex = 0;
-  UserRole? _requestedRole;
+  Map<String, dynamic>? _registrationData;
+  String? _organizationName;
+  String? _organizationRegion;
 
   AppState() {
     _locationService = LocationService(this);
@@ -47,13 +49,32 @@ class AppState extends ChangeNotifier {
     return const [];
   }
 
+  /// Clear in-memory session (call on sign-out or before loading a new account).
+  void clearSession() {
+    _currentUser = null;
+    _apiClient = null;
+    _backendError = null;
+    _isLoadingUser = false;
+    _currentRole = UserRole.volunteer;
+    _currentNavIndex = 0;
+    _registrationData = null;
+    _organizationName = null;
+    _organizationRegion = null;
+    _reports.clear();
+    _tasks.clear();
+    _volunteers.clear();
+    _crisisAlerts.clear();
+    notifyListeners();
+  }
+
   /// Map backend register/profile payload onto the local AppUser + role state.
   void _applyRegisterPayload(Map<String, dynamic> data, User firebaseUser) {
     UserRole mappedRole = UserRole.volunteer;
     final roleStr = data['role']?.toString();
     if (roleStr == 'platform_admin') mappedRole = UserRole.platformAdmin;
-    if (roleStr == 'ngo_admin') mappedRole = UserRole.ngoAdmin;
-    if (roleStr == 'coordinator') mappedRole = UserRole.coordinator;
+    if (roleStr == 'ngo_admin' || roleStr == 'coordinator') {
+      mappedRole = UserRole.ngoAdmin;
+    }
     if (roleStr == 'ngo_worker') mappedRole = UserRole.ngoWorker;
 
     _currentRole = mappedRole;
@@ -68,6 +89,7 @@ class AppState extends ChangeNotifier {
       skills: _parseSkills(data['skills']),
       location: data['location']?.toString(),
       isAvailable: data['is_available'] ?? true,
+      isIndependent: data['is_independent'] ?? false,
       createdAt: _parseBackendDate(data['created_at']),
       trustScore: trustDisplay,
     );
@@ -78,10 +100,11 @@ class AppState extends ChangeNotifier {
     final firebaseUser = FirebaseAuth.instance.currentUser;
     if (firebaseUser == null || _apiClient == null) return false;
     try {
-      final response = await _apiClient!.post('/api/v1/auth/register', {});
+      final response = await _apiClient!.get('/api/v1/profile');
       if (response.statusCode != 200) return false;
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       _applyRegisterPayload(data, firebaseUser);
+      await _loadOrganizationContext();
       notifyListeners();
       return true;
     } catch (e) {
@@ -142,8 +165,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  void setRegistrationData(Map<String, dynamic> data) {
+    _registrationData = data;
+  }
+
   void setRequestedRole(UserRole role) {
-    _requestedRole = role;
+    _registrationData = {
+      'requested_role': role.name,
+    };
   }
 
   // Getters
@@ -152,6 +181,8 @@ class AppState extends ChangeNotifier {
   bool get isLoadingUser => _isLoadingUser;
   bool get isLoading => _isLoading;
   String? get backendError => _backendError;
+  String? get organizationName => _organizationName;
+  String? get organizationRegion => _organizationRegion;
   ApiClient? get apiClient => _apiClient;
   LocationService? get locationService => _locationService;
   bool get isAuthenticated => _currentUser != null;
@@ -239,23 +270,29 @@ class AppState extends ChangeNotifier {
     if (lastSignIn != null) {
       if (DateTime.now().difference(lastSignIn).inHours >= 12) {
         // Enforce strict re-authentication
+        clearSession();
         await FirebaseAuth.instance.signOut();
         return;
       }
     }
 
-    _isLoadingUser = true;
+    // Drop any previous account from memory before loading this Firebase user.
+    _currentUser = null;
+    _apiClient = null;
     _backendError = null;
+    _isLoadingUser = true;
     notifyListeners();
 
     try {
+      // Force a fresh ID token so the backend never sees a stale Bearer token.
+      await firebaseUser.getIdToken(true);
       _apiClient = ApiClient(baseUrl: AppConstants.apiBaseUrl);
 
-      // Pass the requested role if the user just signed up
+      // Pass the registration data if the user just signed up
       final payload = <String, dynamic>{};
-      if (_requestedRole != null) {
-        payload['requested_role'] = _requestedRole!.name;
-        _requestedRole = null; // Consume the requested role
+      if (_registrationData != null) {
+        payload.addAll(_registrationData!);
+        _registrationData = null; // Consume the data
       }
 
       // Calls FastApi to verify token and return profile
@@ -264,6 +301,7 @@ class AppState extends ChangeNotifier {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         _applyRegisterPayload(data, firebaseUser);
+        await _loadOrganizationContext();
         final mappedRole = _currentRole;
         if (mappedRole == UserRole.volunteer && _locationService != null) {
           try {
@@ -279,14 +317,51 @@ class AppState extends ChangeNotifier {
           await refreshHistoricalTasks();
         }
       } else {
-        _backendError =
-            "Permission denied or backend error. Code: ${response.statusCode}";
+        _currentUser = null;
+        _backendError = response.statusCode == 401
+            ? 'Session expired or invalid. Please sign out and sign in again.'
+            : 'Permission denied or backend error. Code: ${response.statusCode}';
       }
     } catch (e) {
+      _currentUser = null;
       _backendError = "Could not connect to the SevaSetu secure server.";
     } finally {
       _isLoadingUser = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _loadOrganizationContext() async {
+    final orgId = _currentUser?.ngoId;
+    if (orgId == null || orgId.isEmpty || _apiClient == null) return;
+    if (_currentRole != UserRole.ngoAdmin && _currentRole != UserRole.platformAdmin) {
+      return;
+    }
+    try {
+      final response = await _apiClient!.get('/api/v1/organizations/$orgId');
+      if (response.statusCode != 200) return;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      _organizationName = data['name']?.toString();
+      final region = data['region']?.toString().trim();
+      _organizationRegion = region != null && region.isNotEmpty ? region.toLowerCase() : null;
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) print('[AppState] _loadOrganizationContext: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchOrganizationMembers() async {
+    final orgId = _currentUser?.ngoId;
+    if (orgId == null || orgId.isEmpty || _apiClient == null) return [];
+    try {
+      final response = await _apiClient!.get('/api/v1/organizations/$orgId/members');
+      if (response.statusCode != 200) return [];
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final members = (data['members'] as List<dynamic>?) ?? const [];
+      return members.whereType<Map<String, dynamic>>().toList();
+    } catch (e) {
+      if (kDebugMode) print('[AppState] fetchOrganizationMembers: $e');
+      return [];
     }
   }
 

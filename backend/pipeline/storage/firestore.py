@@ -57,7 +57,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from dotenv import load_dotenv
 
 load_dotenv()

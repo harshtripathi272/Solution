@@ -14,6 +14,7 @@ import httpx
 
 from auth import get_current_user, get_current_user_token, RoleChecker, db, firestore
 from models import UserProfile, UserRole, OrganizationProfile
+from organization_ids import allocate_organization_id, validate_organization_exists
 from pydantic import BaseModel, Field
 
 # Pipeline Imports
@@ -32,7 +33,13 @@ from api import heatmap_router
 from api.community_graph import router as community_graph_router
 
 class RegisterRequest(BaseModel):
-    requested_role: str = "volunteer"
+    requested_role: str | None = None  # None on login; set only on sign-up
+    name: str | None = None
+    organization_id: str | None = None
+    organization_name: str | None = None
+    organization_mission: str | None = None
+    organization_region: str | None = None
+    is_independent: bool = False
 
 class LocationUpdate(BaseModel):
     latitude: float
@@ -205,27 +212,111 @@ def register_user(req: RegisterRequest, decoded_token: dict = Depends(get_curren
     user_ref = db.collection("users").document(uid)
     user_doc = user_ref.get()
     
-    if user_doc.exists:
-        logger.info(f"User {uid} already exists.")
-        return UserProfile(**user_doc.to_dict(), uid=uid)
-        
-    logger.info(f"Registering new user profile for UID: {uid} with requested role: {req.requested_role}")
-    
-    requested_role_str = req.requested_role.split('.')[-1]
     role_map = {
         "platform_admin": UserRole.platform_admin.value,
-        "coordinator": UserRole.coordinator.value,
+        "platformAdmin": UserRole.platform_admin.value,
+        "coordinator": UserRole.ngo_admin.value,  # legacy: treat as NGO admin
         "ngo_admin": UserRole.ngo_admin.value,
+        "ngoAdmin": UserRole.ngo_admin.value,
         "ngoWorker": UserRole.ngo_worker.value,
         "ngo_worker": UserRole.ngo_worker.value,
         "volunteer": UserRole.volunteer.value,
     }
-    assigned_role = role_map.get(requested_role_str, UserRole.volunteer.value)
-    
+
+    def _resolve_role(requested: str | None) -> str:
+        if not requested:
+            return UserRole.volunteer.value
+        token = requested.split(".")[-1]
+        return role_map.get(token, UserRole.volunteer.value)
+
+    def _ensure_organization(assigned_role: str, existing_org_id: str | None = None) -> str | None:
+        """Create or update an organization with a site-issued 8-digit ID for NGO administrators."""
+        if assigned_role != UserRole.ngo_admin.value or not req.organization_name:
+            return None
+
+        region_raw = (req.organization_region or "").strip()
+        org_patch = {
+            "name": req.organization_name,
+            "mission": req.organization_mission,
+            "region": region_raw.lower() if region_raw else None,
+            "admin_uid": uid,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
+
+        if existing_org_id:
+            org_ref = db.collection("organizations").document(existing_org_id)
+            if org_ref.get().exists:
+                org_ref.set(org_patch, merge=True)
+                logger.info("Updated organization %s for NGO admin %s", existing_org_id, uid)
+                return existing_org_id
+
+        resolved_org_id = allocate_organization_id()
+        org_data = {
+            "id": resolved_org_id,
+            **org_patch,
+            "created_at": firestore.SERVER_TIMESTAMP,
+        }
+        db.collection("organizations").document(resolved_org_id).set(org_data)
+        logger.info("Created organization %s for NGO admin %s", resolved_org_id, uid)
+        return resolved_org_id
+
+    def _resolve_member_organization(assigned_role: str) -> str | None:
+        """Link volunteers / field workers to an existing organization by ID."""
+        if assigned_role not in {UserRole.volunteer.value, UserRole.ngo_worker.value}:
+            return None
+        if req.is_independent:
+            return None
+        return validate_organization_exists(req.organization_id)
+
+    if user_doc.exists:
+        existing = user_doc.to_dict() or {}
+        updates: dict[str, Any] = {}
+
+        if req.requested_role is not None:
+            assigned_role = _resolve_role(req.requested_role)
+            if assigned_role != existing.get("role"):
+                updates["role"] = assigned_role
+                logger.info("Upgrading user %s role to %s", uid, assigned_role)
+
+            if assigned_role == UserRole.ngo_admin.value:
+                org_id = _ensure_organization(assigned_role, existing.get("organization_id"))
+                if org_id:
+                    updates["organization_id"] = org_id
+            else:
+                member_org = _resolve_member_organization(assigned_role)
+                if member_org:
+                    updates["organization_id"] = member_org
+                elif req.is_independent:
+                    updates["organization_id"] = None
+            if req.name:
+                updates["name"] = req.name
+            if req.is_independent is not None:
+                updates["is_independent"] = req.is_independent
+
+        if updates:
+            updates["updated_at"] = firestore.SERVER_TIMESTAMP
+            user_ref.update(updates)
+            existing.update(updates)
+
+        existing["uid"] = uid
+        logger.info("User %s already exists; returning profile (role=%s)", uid, existing.get("role"))
+        return UserProfile(**existing)
+
+    logger.info(f"Registering new user profile for UID: {uid} with requested role: {req.requested_role}")
+
+    assigned_role = _resolve_role(req.requested_role)
+
+    if assigned_role == UserRole.ngo_admin.value:
+        org_id = _ensure_organization(assigned_role)
+    else:
+        org_id = _resolve_member_organization(assigned_role)
+
     new_user_data = {
         "email": email,
+        "name": req.name or decoded_token.get("name"),
         "role": assigned_role,
-        "organization_id": None,
+        "organization_id": org_id,
+        "is_independent": req.is_independent,
         "is_verified": True if assigned_role == UserRole.volunteer.value else False,
         "created_at": firestore.SERVER_TIMESTAMP,
         "updated_at": firestore.SERVER_TIMESTAMP
@@ -411,7 +502,7 @@ async def ingest_documents_from_jsonl_url(
 @app.post("/api/v1/severity/feedback")
 async def submit_severity_feedback(
     payload: SeverityFeedbackRequest,
-    current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.coordinator]))
+    current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.ngo_admin]))
 ):
     """Coordinator feedback endpoint for resolved/worsened/stable severity correction."""
     feedback = payload.feedback.strip().lower()
@@ -477,7 +568,7 @@ def update_user_profile(profile: ProfileUpdate, decoded_token: dict = Depends(ge
 
 # --- RBAC Protected Endpoints ---
 @app.get("/api/v1/alerts")
-def get_global_alerts(current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.coordinator]))):
+def get_global_alerts(current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.ngo_admin]))):
     """Only Coordinators can access global alerts"""
     return {
         "message": "Global alerts accessed successfully. This implies critical information.",
@@ -659,7 +750,7 @@ async def get_organization(
     current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.ngo_admin, UserRole.coordinator, UserRole.ngo_worker]))
 ):
     """Fetch organization details. If not admin, can only fetch own org."""
-    if current_user.role not in [UserRole.platform_admin, UserRole.coordinator] and current_user.organization_id != org_id:
+    if current_user.role != UserRole.platform_admin and current_user.organization_id != org_id:
         raise HTTPException(status_code=403, detail="Forbidden: You can only access your own organization profile")
     
     try:
@@ -667,6 +758,41 @@ async def get_organization(
         if not doc.exists:
             raise HTTPException(status_code=404, detail="Organization not found")
         return doc.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/organizations/{org_id}/members")
+def list_organization_members(
+    org_id: str,
+    current_user: UserProfile = Depends(RoleChecker([UserRole.platform_admin, UserRole.ngo_admin])),
+):
+    """NGO administrators see volunteers and workers enrolled in their organization."""
+    if current_user.role != UserRole.platform_admin and current_user.organization_id != org_id:
+        raise HTTPException(status_code=403, detail="Forbidden: You can only list members of your own organization")
+
+    try:
+        members = []
+        for doc in db.collection("users").where("organization_id", "==", org_id).stream():
+            data = doc.to_dict() or {}
+            role = data.get("role")
+            if role not in {UserRole.volunteer.value, UserRole.ngo_worker.value}:
+                continue
+            members.append(
+                {
+                    "uid": doc.id,
+                    "name": data.get("name"),
+                    "email": data.get("email"),
+                    "role": role,
+                    "phone": data.get("phone"),
+                    "skills": data.get("skills") or [],
+                    "location": data.get("location"),
+                    "is_available": data.get("is_available", True),
+                    "is_independent": data.get("is_independent", False),
+                }
+            )
+        members.sort(key=lambda m: (m.get("name") or m.get("email") or "").lower())
+        return {"organization_id": org_id, "count": len(members), "members": members}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

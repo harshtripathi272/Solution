@@ -112,7 +112,11 @@ class AppShell extends StatelessWidget {
         const SizedBox(width: AppSpacing.xs),
         IconButton(
           icon: const Icon(Icons.logout_rounded, color: AppColors.error),
-          onPressed: () => AuthService().signOut(),
+          onPressed: () async {
+            await AuthService().signOut(
+              onBeforeSignOut: () async => context.read<AppState>().clearSession(),
+            );
+          },
           tooltip: 'Sign out',
         ),
         SizedBox(width: isSmallScreen ? AppSpacing.xs : AppSpacing.sm),
@@ -183,6 +187,8 @@ class AppShell extends StatelessWidget {
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildBody(AppState state) {
     switch (state.currentRole) {
+      case UserRole.ngoAdmin:
+      case UserRole.platformAdmin:
       case UserRole.coordinator:
         return _buildCoordinatorBody(state);
       case UserRole.volunteer:
@@ -265,9 +271,11 @@ class AppShell extends StatelessWidget {
   List<Map<String, dynamic>> _getNavItems(UserRole role) {
     switch (role) {
       case UserRole.coordinator:
+      case UserRole.ngoAdmin:
+      case UserRole.platformAdmin:
         return [
-          {'icon': Icons.dashboard_outlined, 'selectedIcon': Icons.dashboard_rounded, 'label': 'Dashboard'},
-          {'icon': Icons.map_outlined, 'selectedIcon': Icons.map_rounded, 'label': 'Heatmap'},
+          {'icon': Icons.dashboard_outlined, 'selectedIcon': Icons.dashboard_rounded, 'label': 'Overview'},
+          {'icon': Icons.map_outlined, 'selectedIcon': Icons.map_rounded, 'label': 'Region map'},
           {'icon': Icons.hub_outlined, 'selectedIcon': Icons.hub_rounded, 'label': 'Network'},
           {'icon': Icons.insights_outlined, 'selectedIcon': Icons.insights_rounded, 'label': 'Impact'},
           {'icon': Icons.person_outline_rounded, 'selectedIcon': Icons.person_rounded, 'label': 'Profile'},
@@ -286,14 +294,16 @@ class AppShell extends StatelessWidget {
   }
 
   IconData _roleIcon(UserRole r) => switch (r) {
-        UserRole.coordinator => Icons.admin_panel_settings_rounded,
+        UserRole.coordinator || UserRole.ngoAdmin => Icons.business_center_rounded,
         UserRole.volunteer => Icons.volunteer_activism_rounded,
         UserRole.ngoWorker => Icons.people_alt_rounded,
+        UserRole.platformAdmin => Icons.shield_rounded,
       };
 
   String _roleName(UserRole r) => switch (r) {
-        UserRole.coordinator => 'Coordinator',
+        UserRole.coordinator || UserRole.ngoAdmin => 'NGO Admin',
         UserRole.volunteer => 'Volunteer',
         UserRole.ngoWorker => 'NGO Worker',
+        UserRole.platformAdmin => 'Platform Admin',
       };
 }

@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Response
 
 from auth import RoleChecker, db
-from models import UserRole
+from models import UserProfile, UserRole
 from pipeline.processing.geohash import decode, encode
 from pipeline.storage import bigquery_store
 
@@ -468,6 +468,22 @@ def _build_etag(payload: dict[str, Any]) -> str:
     return f'W/"{digest}"'
 
 
+def _resolve_org_region(organization_id: str | None) -> str | None:
+    if not organization_id:
+        return None
+
+    def _fetch() -> str | None:
+        doc = db.collection("organizations").document(organization_id).get()
+        if not doc.exists:
+            return None
+        region = (doc.to_dict() or {}).get("region")
+        if isinstance(region, str) and region.strip():
+            return region.strip().lower()
+        return None
+
+    return _fetch()
+
+
 @router.get("/heatmap-data")
 async def get_heatmap_data(
     response: Response,
@@ -475,15 +491,23 @@ async def get_heatmap_data(
     need_type: str | None = Query(default=None),
     min_severity: float = Query(default=0.1, ge=0.0, le=1.0),
     time_range: str = Query(default="30d"),
-    _: Any = Depends(RoleChecker([UserRole.coordinator, UserRole.ngo_worker])),
+    current_user: UserProfile = Depends(
+        RoleChecker([UserRole.ngo_admin, UserRole.ngo_worker, UserRole.platform_admin, UserRole.coordinator])
+    ),
 ):
     now = datetime.now(timezone.utc)
     since_ts = now - _parse_time_range(time_range)
     need_types = _parse_need_types(need_type)
 
+    effective_region = (region or "").strip().lower() or None
+    if not effective_region and current_user.role in {UserRole.ngo_admin, UserRole.coordinator}:
+        effective_region = await asyncio.get_event_loop().run_in_executor(
+            None, _resolve_org_region, current_user.organization_id
+        )
+
     firestore_points = await _fetch_firestore_points(
         since_ts=since_ts,
-        region=region,
+        region=effective_region,
         need_types=need_types,
         min_severity=min_severity,
     )
@@ -495,7 +519,7 @@ async def get_heatmap_data(
         try:
             fallback_points = await _fetch_bigquery_points(
                 since_ts=since_ts,
-                region=region,
+                region=effective_region,
                 need_types=need_types,
                 min_severity=min_severity,
             )
@@ -518,11 +542,12 @@ async def get_heatmap_data(
             "raw_point_count": raw_count,
             "feature_count": len(features),
             "filters": {
-                "region": region,
+                "region": effective_region,
                 "need_type": sorted(need_types),
                 "min_severity": min_severity,
                 "time_range": time_range,
             },
+            "organization_id": current_user.organization_id,
         },
     }
 
@@ -537,10 +562,14 @@ async def get_heatmap_data(
 async def get_region_boundaries(
     response: Response,
     region: str | None = Query(default=None),
-    _: Any = Depends(RoleChecker([UserRole.coordinator, UserRole.ngo_worker])),
+    current_user: UserProfile = Depends(
+        RoleChecker([UserRole.ngo_admin, UserRole.ngo_worker, UserRole.platform_admin, UserRole.coordinator])
+    ),
 ):
     now = datetime.now(timezone.utc)
     requested_region = (region or "").strip().lower()
+    if not requested_region and current_user.role in {UserRole.ngo_admin, UserRole.coordinator}:
+        requested_region = _resolve_org_region(current_user.organization_id) or ""
 
     if requested_region:
         features = [

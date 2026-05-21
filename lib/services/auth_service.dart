@@ -52,7 +52,10 @@ class AuthService {
     }
   }
 
-  Future<void> signOut() async {
+  Future<void> signOut({Future<void> Function()? onBeforeSignOut}) async {
+    if (onBeforeSignOut != null) {
+      await onBeforeSignOut();
+    }
     await _googleSignIn.signOut();
     await _auth.signOut();
   }

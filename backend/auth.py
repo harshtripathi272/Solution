@@ -119,6 +119,7 @@ def get_current_user_token(credentials: HTTPAuthorizationCredentials = Depends(s
         decoded_token = _firebase_auth.verify_id_token(token)
         return decoded_token
     except Exception as e:
+        logger.warning("Firebase ID token verification failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",

@@ -7,20 +7,22 @@ class ApiClient {
 
   ApiClient({required this.baseUrl});
 
-  Future<String?> _getToken() async {
+  Future<String?> _getToken({bool forceRefresh = false}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      // getIdToken() retrieves the Bearer token for the session
-      return await user.getIdToken();
+      return await user.getIdToken(forceRefresh);
     }
     return null;
   }
 
-  Future<Map<String, String>> _getHeaders() async {
-    final token = await _getToken();
+  Future<Map<String, String>> _getHeaders({bool forceRefresh = false}) async {
+    final token = await _getToken(forceRefresh: forceRefresh);
+    if (token == null || token.isEmpty) {
+      throw StateError('Not authenticated: no Firebase ID token available');
+    }
     return {
       'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
+      'Authorization': 'Bearer $token',
     };
   }
 

@@ -12,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../config/theme.dart';
 import '../../models/heatmap_point.dart';
 import '../../providers/app_state.dart';
+import '../../models/user_model.dart';
 import '../../services/heatmap_api_service.dart';
 
 class HeatmapScreen extends StatefulWidget {
@@ -72,11 +73,31 @@ class _HeatmapScreenState extends State<HeatmapScreen>
     super.initState();
     _apiService = HeatmapApiService();
     _mapController = MapController();
-    // Ensure the map starts centered on India for a consistent default view
+    final state = context.read<AppState>();
+    if (state.currentRole == UserRole.ngoAdmin && state.organizationRegion != null) {
+      _selectedRegion = state.organizationRegion;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
-        _mapController.move(const LatLng(20.5937, 78.9629), 5.0);
+        final region = _selectedRegion;
+        if (region != null && _regionCentres.containsKey(region)) {
+          _mapController.move(_regionCentres[region]!, 6.5);
+        } else {
+          _mapController.move(const LatLng(20.5937, 78.9629), 5.0);
+        }
       } catch (_) {}
+      if (state.currentRole == UserRole.ngoAdmin &&
+          state.organizationRegion == null &&
+          state.currentUser?.ngoId != null) {
+        state.refreshProfileFromServer().then((_) {
+          if (!mounted) return;
+          final region = context.read<AppState>().organizationRegion;
+          if (region != null) {
+            setState(() => _selectedRegion = region);
+            _loadHeatmapData();
+          }
+        });
+      }
     });
     _loadHeatmapData();
     _startAutoRefresh();
